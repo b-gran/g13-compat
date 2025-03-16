@@ -1,0 +1,5 @@
+.build
+*.swp
+g13-ioreg.txt
+hidutil-list.txt
+ioreg.txt

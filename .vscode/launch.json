@@ -1,0 +1,22 @@
+{
+	"configurations": [
+		{
+			"type": "lldb",
+			"request": "launch",
+			"args": [],
+			"cwd": "${workspaceFolder:g13-compat}",
+			"name": "Debug G13HID",
+			"program": "${workspaceFolder:g13-compat}/.build/debug/G13HID",
+			"preLaunchTask": "swift: Build Debug G13HID"
+		},
+		{
+			"type": "lldb",
+			"request": "launch",
+			"args": [],
+			"cwd": "${workspaceFolder:g13-compat}",
+			"name": "Release G13HID",
+			"program": "${workspaceFolder:g13-compat}/.build/release/G13HID",
+			"preLaunchTask": "swift: Build Release G13HID"
+		}
+	]
+}
