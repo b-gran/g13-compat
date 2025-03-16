@@ -2,10 +2,10 @@ import SwiftUI
 import G13HID
 import Foundation
 
-@available(macOS 12.0, *)
+@available(macOS 13.0, *)
 typealias JS = G13HID.JoystickSettings
 
-@available(macOS 12.0, *)
+@available(macOS 13.0, *)
 class HIDMonitor: ObservableObject, HIDDeviceDelegate {
     @Published var isConnected = false
     @Published var lastInput: HIDInputData?
@@ -47,7 +47,7 @@ class HIDMonitor: ObservableObject, HIDDeviceDelegate {
     }
 }
 
-@available(macOS 12.0, *)
+@available(macOS 13.0, *)
 struct ContentView: View {
     @StateObject private var monitor = HIDMonitor()
     @StateObject private var joystickSettings = JS()
@@ -75,12 +75,14 @@ struct ContentView: View {
                             .font(.headline)
                         
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Timestamp: \(input.timestamp)")
-                            Text("Length: \(input.length)")
-                            Text("Usage Page: 0x\(String(format: "%04X", input.usagePage))")
-                            Text("Usage: 0x\(String(format: "%04X", input.usage))")
-                            Text("Integer Value: \(input.intValue)")
-                            Text("Raw Data: \(input.rawData.prefix(8).map { String(format: "%02X ", $0) }.joined())")
+                            SelectableText(text: """
+                            Timestamp: \(input.timestamp)
+                            Length: \(input.length)
+                            Usage Page: 0x\(String(format: "%04X", input.usagePage))
+                            Usage: 0x\(String(format: "%04X", input.usage))
+                            Integer Value: \(input.intValue)
+                            Raw Data: \(input.rawData.prefix(8).map { String(format: "%02X ", $0) }.joined())
+                            """)
                         }
                         .font(.system(.body, design: .monospaced))
                     }
