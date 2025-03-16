@@ -1,5 +1,6 @@
 import Foundation
 import IOKit.hid
+import SwiftUI
 
 public struct HIDInputData {
     public let timestamp: UInt64
@@ -36,10 +37,19 @@ public class HIDDevice {
     private var deviceManager: IOHIDManager
     private var isManagerOpen: Bool = false
     public weak var delegate: HIDDeviceDelegate?
+    public var joystickSettings: JoystickSettings?
     
     // Constants for the G13
     private let vendorID: Int = 0x046D
     private let productID: Int = 0xC21C
+    
+    // Joystick constants
+    private let joystickUsagePage: UInt32 = 0x01  // Generic Desktop Controls
+    private let joystickUsage: UInt32 = 0x04      // Joystick
+    private let joystickThreshold: Int64 = 50     // Threshold for detecting joystick movement
+    
+    private var lastJoystickX: Int64 = 0
+    private var lastJoystickY: Int64 = 0
     
     public init() throws {
         deviceManager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
@@ -155,7 +165,35 @@ public class HIDDevice {
             rawData: rawData
         )
         
+        // Handle joystick input
+        if usagePage == joystickUsagePage && usage == joystickUsage {
+            handleJoystickInput(intValue)
+        }
+        
         delegate?.hidDevice(self, didReceiveInput: inputData)
+    }
+    
+    private func handleJoystickInput(_ value: Int64) {
+        guard let settings = joystickSettings else { return }
+        
+        // Assuming joystick values are in the range -100 to 100
+        if value < -joystickThreshold && lastJoystickX >= -joystickThreshold {
+            // Left
+            print("Joystick Left: \(settings.calibration.leftKey)")
+        } else if value > joystickThreshold && lastJoystickX <= joystickThreshold {
+            // Right
+            print("Joystick Right: \(settings.calibration.rightKey)")
+        } else if value < -joystickThreshold && lastJoystickY >= -joystickThreshold {
+            // Up
+            print("Joystick Up: \(settings.calibration.upKey)")
+        } else if value > joystickThreshold && lastJoystickY <= joystickThreshold {
+            // Down
+            print("Joystick Down: \(settings.calibration.downKey)")
+        }
+        
+        // Update last values
+        lastJoystickX = value
+        lastJoystickY = value
     }
     
     private func IOHIDDeviceCreateMatchingDictionary(_ vendorID: Int, _ productID: Int) -> CFDictionary {

@@ -1,6 +1,11 @@
 import SwiftUI
 import G13HID
+import Foundation
 
+@available(macOS 12.0, *)
+typealias JS = G13HID.JoystickSettings
+
+@available(macOS 12.0, *)
 class HIDMonitor: ObservableObject, HIDDeviceDelegate {
     @Published var isConnected = false
     @Published var lastInput: HIDInputData?
@@ -16,6 +21,10 @@ class HIDMonitor: ObservableObject, HIDDeviceDelegate {
         } catch {
             errorMessage = "Error: \(error)"
         }
+    }
+    
+    func setJoystickSettings(_ settings: JS) {
+        hidDevice?.joystickSettings = settings
     }
     
     func hidDevice(_ device: HIDDevice, didReceiveInput data: HIDInputData) {
@@ -38,8 +47,10 @@ class HIDMonitor: ObservableObject, HIDDeviceDelegate {
     }
 }
 
+@available(macOS 12.0, *)
 struct ContentView: View {
     @StateObject private var monitor = HIDMonitor()
+    @StateObject private var joystickSettings = JS()
     
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -52,6 +63,11 @@ struct ContentView: View {
             } else {
                 Text("Device Status: \(monitor.isConnected ? "Connected" : "Disconnected")")
                     .foregroundColor(monitor.isConnected ? .green : .red)
+                
+                if monitor.isConnected {
+                    JoystickCalibrationView(settings: joystickSettings, monitor: monitor)
+                        .padding(Edge.Set.top)
+                }
                 
                 if let input = monitor.lastInput {
                     Group {
@@ -75,5 +91,8 @@ struct ContentView: View {
         }
         .padding()
         .frame(minWidth: 400, minHeight: 300)
+        .onAppear {
+            monitor.setJoystickSettings(joystickSettings)
+        }
     }
 } 
