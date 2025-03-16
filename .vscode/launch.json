@@ -17,6 +17,24 @@
 			"name": "Release G13HID",
 			"program": "${workspaceFolder:g13-compat}/.build/release/G13HID",
 			"preLaunchTask": "swift: Build Release G13HID"
+		},
+		{
+			"type": "lldb",
+			"request": "launch",
+			"args": [],
+			"cwd": "${workspaceFolder:g13-compat}",
+			"name": "Debug G13HIDApp",
+			"program": "${workspaceFolder:g13-compat}/.build/debug/G13HIDApp",
+			"preLaunchTask": "swift: Build Debug G13HIDApp"
+		},
+		{
+			"type": "lldb",
+			"request": "launch",
+			"args": [],
+			"cwd": "${workspaceFolder:g13-compat}",
+			"name": "Release G13HIDApp",
+			"program": "${workspaceFolder:g13-compat}/.build/release/G13HIDApp",
+			"preLaunchTask": "swift: Build Release G13HIDApp"
 		}
 	]
 }

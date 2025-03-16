@@ -8,14 +8,20 @@ let package = Package(
     ],
     products: [
         .executable(
+            name: "G13HIDApp",
+            targets: ["G13HIDApp"]),
+        .library(
             name: "G13HID",
-            targets: ["G13HID"]),
+            targets: ["G13HID"])
     ],
     dependencies: [],
     targets: [
-        .executableTarget(
+        .target(
             name: "G13HID",
             dependencies: []),
+        .executableTarget(
+            name: "G13HIDApp",
+            dependencies: ["G13HID"]),
         .testTarget(
             name: "G13HIDTests",
             dependencies: ["G13HID"]),

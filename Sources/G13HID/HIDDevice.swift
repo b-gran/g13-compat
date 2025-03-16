@@ -1,6 +1,30 @@
 import Foundation
 import IOKit.hid
 
+public struct HIDInputData {
+    public let timestamp: UInt64
+    public let length: Int
+    public let usagePage: UInt32
+    public let usage: UInt32
+    public let intValue: Int64
+    public let rawData: [UInt8]
+    
+    public init(timestamp: UInt64, length: CFIndex, usagePage: UInt32, usage: UInt32, intValue: Int64, rawData: [UInt8]) {
+        self.timestamp = timestamp
+        self.length = length
+        self.usagePage = usagePage
+        self.usage = usage
+        self.intValue = intValue
+        self.rawData = rawData
+    }
+}
+
+public protocol HIDDeviceDelegate: AnyObject {
+    func hidDevice(_ device: HIDDevice, didReceiveInput data: HIDInputData)
+    func hidDeviceDidConnect(_ device: HIDDevice)
+    func hidDeviceDidDisconnect(_ device: HIDDevice)
+}
+
 public enum HIDDeviceError: Error {
     case failedToOpenManager
     case permissionDenied
@@ -11,6 +35,7 @@ public class HIDDevice {
     private var device: IOHIDDevice?
     private var deviceManager: IOHIDManager
     private var isManagerOpen: Bool = false
+    public weak var delegate: HIDDeviceDelegate?
     
     // Constants for the G13
     private let vendorID: Int = 0x046D
@@ -98,12 +123,15 @@ public class HIDDevice {
             inputCallback,
             context
         )
+        
+        delegate?.hidDeviceDidConnect(self)
     }
     
     private func handleDeviceRemoval(device: IOHIDDevice) {
         if device == self.device {
             print("G13 device disconnected")
             self.device = nil
+            delegate?.hidDeviceDidDisconnect(self)
         }
     }
     
@@ -114,19 +142,20 @@ public class HIDDevice {
         let data = IOHIDValueGetBytePtr(value)
         let usagePage = IOHIDElementGetUsagePage(element)
         let usage = IOHIDElementGetUsage(element)
-        let intValue = IOHIDValueGetIntegerValue(value)
+        let intValue = Int64(IOHIDValueGetIntegerValue(value))
         
-        print("Input received:")
-        print("Timestamp: \(timestamp)")
-        print("Length: \(length)")
-        print("Usage Page: 0x\(String(format: "%04X", usagePage))")
-        print("Usage: 0x\(String(format: "%04X", usage))")
-        print("Integer Value: \(intValue)")
-        print("Raw Data: ", terminator: "")
-        for i in 0..<min(length, 8) {  // Print first 8 bytes
-            print(String(format: "%02X ", data[Int(i)]), terminator: "")
-        }
-        print()
+        let rawData = Array(UnsafeBufferPointer(start: data, count: Int(length)))
+        
+        let inputData = HIDInputData(
+            timestamp: timestamp,
+            length: length,
+            usagePage: usagePage,
+            usage: usage,
+            intValue: intValue,
+            rawData: rawData
+        )
+        
+        delegate?.hidDevice(self, didReceiveInput: inputData)
     }
     
     private func IOHIDDeviceCreateMatchingDictionary(_ vendorID: Int, _ productID: Int) -> CFDictionary {
