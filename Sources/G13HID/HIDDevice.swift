@@ -40,7 +40,7 @@ public class HIDDevice {
     public var joystickSettings: JoystickSettings?
 
     // Virtual keyboard components
-    private var virtualKeyboard: VirtualKeyboard?
+    private var keyboardOutput: KeyboardOutput?
     private var macroEngine: MacroEngine?
     private var keyMapper: KeyMapper?
     private var joystickController: JoystickController?
@@ -64,14 +64,25 @@ public class HIDDevice {
 
         // Initialize virtual keyboard and related components
         do {
-            let keyboard = try VirtualKeyboard()
-            self.virtualKeyboard = keyboard
+            let config = try ConfigManager(configPath: configPath)
+            self.configManager = config
+
+            // Create keyboard output based on config
+            let outputMode = config.getConfig().keyboardOutputMode
+            print("Keyboard output mode: \(outputMode.description)")
+
+            let keyboard: KeyboardOutput
+            if let kb = KeyboardOutputFactory.create(mode: outputMode) {
+                keyboard = kb
+                self.keyboardOutput = kb
+            } else {
+                print("Failed to create keyboard with mode \(outputMode), falling back to CGEvent")
+                keyboard = CGEventKeyboard()
+                self.keyboardOutput = keyboard
+            }
 
             let macro = MacroEngine(keyboard: keyboard)
             self.macroEngine = macro
-
-            let config = try ConfigManager(configPath: configPath)
-            self.configManager = config
 
             // Register macros from config
             for (key, macroObj) in config.getConfig().macros {
@@ -87,10 +98,10 @@ public class HIDDevice {
             joystick.dutyCycleRatio = config.getConfig().joystick.dutyCycleRatio
             self.joystickController = joystick
 
-            print("Virtual keyboard initialized successfully")
+            print("Keyboard output initialized successfully")
             print("Config loaded from: \(config.getConfigPath().path)")
         } catch {
-            print("Warning: Failed to initialize virtual keyboard: \(error)")
+            print("Warning: Failed to initialize keyboard output: \(error)")
             print("Device will run in monitor-only mode")
         }
 
@@ -244,8 +255,8 @@ public class HIDDevice {
         return configManager
     }
 
-    public func getVirtualKeyboard() -> VirtualKeyboard? {
-        return virtualKeyboard
+    public func getKeyboardOutput() -> KeyboardOutput? {
+        return keyboardOutput
     }
 
     public func getMacroEngine() -> MacroEngine? {
@@ -286,7 +297,7 @@ public class HIDDevice {
         joystickController?.stop()
 
         // Release all keys
-        try? virtualKeyboard?.releaseAllKeys()
+        try? keyboardOutput?.releaseAllKeys()
 
         if let device = device {
             IOHIDDeviceRegisterInputValueCallback(device, nil, nil)

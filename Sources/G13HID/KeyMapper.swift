@@ -2,7 +2,7 @@ import Foundation
 
 /// Maps G13 HID input to keyboard output
 public class KeyMapper {
-    private let keyboard: VirtualKeyboard
+    private let keyboard: KeyboardOutput
     private let macroEngine: MacroEngine
     private var config: G13Config
     private var pressedGKeys: Set<Int> = []
@@ -11,7 +11,7 @@ public class KeyMapper {
     private let buttonUsagePage: UInt32 = 0x09  // Button usage page
     private let gKeyBaseUsage: UInt32 = 0x01    // G1 starts at usage 0x01
 
-    public init(keyboard: VirtualKeyboard, macroEngine: MacroEngine, config: G13Config) {
+    public init(keyboard: KeyboardOutput, macroEngine: MacroEngine, config: G13Config) {
         self.keyboard = keyboard
         self.macroEngine = macroEngine
         self.config = config

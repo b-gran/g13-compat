@@ -80,12 +80,12 @@ public struct Macro: Codable {
 
 /// Manages and executes macros
 public class MacroEngine {
-    private let keyboard: VirtualKeyboard
+    private let keyboard: KeyboardOutput
     private var macros: [String: Macro] = [:]
     private var executionQueue = DispatchQueue(label: "com.g13compat.macroengine", qos: .userInitiated)
     private var isExecuting = false
 
-    public init(keyboard: VirtualKeyboard) {
+    public init(keyboard: KeyboardOutput) {
         self.keyboard = keyboard
     }
 

@@ -98,15 +98,18 @@ public struct G13Config: Codable {
     public var macros: [String: Macro]
     public var gKeys: [GKeyConfig]
     public var joystick: JoystickConfig
+    public var keyboardOutputMode: KeyboardOutputMode
 
     public init(
         macros: [String: Macro] = [:],
         gKeys: [GKeyConfig] = [],
-        joystick: JoystickConfig = JoystickConfig()
+        joystick: JoystickConfig = JoystickConfig(),
+        keyboardOutputMode: KeyboardOutputMode = .cgEvent
     ) {
         self.macros = macros
         self.gKeys = gKeys
         self.joystick = joystick
+        self.keyboardOutputMode = keyboardOutputMode
     }
 
     /// Create a default configuration with all G keys mapped

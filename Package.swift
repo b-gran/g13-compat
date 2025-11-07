@@ -10,6 +10,9 @@ let package = Package(
         .executable(
             name: "G13HIDApp",
             targets: ["G13HIDApp"]),
+        .executable(
+            name: "G13HIDDaemon",
+            targets: ["G13HIDDaemon"]),
         .library(
             name: "G13HID",
             targets: ["G13HID"])
@@ -21,6 +24,9 @@ let package = Package(
             dependencies: []),
         .executableTarget(
             name: "G13HIDApp",
+            dependencies: ["G13HID"]),
+        .executableTarget(
+            name: "G13HIDDaemon",
             dependencies: ["G13HID"]),
         .testTarget(
             name: "G13HIDTests",

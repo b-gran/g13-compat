@@ -19,22 +19,44 @@
 			"preLaunchTask": "swift: Build Release G13HID"
 		},
 		{
-			"type": "lldb",
+			"type": "swift",
 			"request": "launch",
 			"args": [],
 			"cwd": "${workspaceFolder:g13-compat}",
 			"name": "Debug G13HIDApp",
-			"program": "${workspaceFolder:g13-compat}/.build/debug/G13HIDApp",
-			"preLaunchTask": "swift: Build Debug G13HIDApp"
+			"preLaunchTask": "swift: Build Debug G13HIDApp",
+			"target": "G13HIDApp",
+			"configuration": "debug"
 		},
 		{
-			"type": "lldb",
+			"type": "swift",
 			"request": "launch",
 			"args": [],
 			"cwd": "${workspaceFolder:g13-compat}",
 			"name": "Release G13HIDApp",
-			"program": "${workspaceFolder:g13-compat}/.build/release/G13HIDApp",
-			"preLaunchTask": "swift: Build Release G13HIDApp"
+			"preLaunchTask": "swift: Build Release G13HIDApp",
+			"target": "G13HIDApp",
+			"configuration": "release"
+		},
+		{
+			"type": "swift",
+			"request": "launch",
+			"args": [],
+			"cwd": "${workspaceFolder:g13-compat}",
+			"name": "Debug G13HIDDaemon",
+			"target": "G13HIDDaemon",
+			"configuration": "debug",
+			"preLaunchTask": "swift: Build Debug G13HIDDaemon"
+		},
+		{
+			"type": "swift",
+			"request": "launch",
+			"args": [],
+			"cwd": "${workspaceFolder:g13-compat}",
+			"name": "Release G13HIDDaemon",
+			"target": "G13HIDDaemon",
+			"configuration": "release",
+			"preLaunchTask": "swift: Build Release G13HIDDaemon"
 		}
 	]
 }

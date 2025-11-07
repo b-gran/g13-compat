@@ -1,4 +1,5 @@
 {
+  "keyboardOutputMode": "cgEvent",
   "macros": {
     "quickSave": {
       "name": "Quick Save (F5)",

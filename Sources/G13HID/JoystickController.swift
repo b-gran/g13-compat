@@ -2,7 +2,7 @@ import Foundation
 
 /// Controls joystick input and converts it to keyboard output with duty cycle
 public class JoystickController {
-    private let keyboard: VirtualKeyboard
+    private let keyboard: KeyboardOutput
     private var dutyCycleTimer: Timer?
     private var currentDirection: Direction = .none
     private var dutyCyclePhase: DutyCyclePhase = .off
@@ -47,7 +47,7 @@ public class JoystickController {
         case off
     }
 
-    public init(keyboard: VirtualKeyboard) {
+    public init(keyboard: KeyboardOutput) {
         self.keyboard = keyboard
     }
 

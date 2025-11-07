@@ -48,7 +48,7 @@ private func sendReport(_ device: VirtualHIDDevice?, _ data: Data) -> IOReturn {
 }
 
 /// Represents a virtual HID keyboard device using IOHIDUserDevice
-public class VirtualKeyboard {
+public class VirtualKeyboard: KeyboardOutput {
     private var device: VirtualHIDDevice?
     private var pressedKeys: Set<UInt8> = []
 
@@ -233,7 +233,7 @@ public class VirtualKeyboard {
     }
 
     /// Presses a key (or multiple keys simultaneously)
-    public func pressKey(_ keyCode: KeyCode, modifiers: [ModifierKey] = []) throws {
+    public func pressKey(_ keyCode: KeyCode, modifiers: [ModifierKey]) throws {
         guard device != nil else {
             throw KeyboardError.deviceNotActive
         }
@@ -243,7 +243,7 @@ public class VirtualKeyboard {
     }
 
     /// Releases a key
-    public func releaseKey(_ keyCode: KeyCode, modifiers: [ModifierKey] = []) throws {
+    public func releaseKey(_ keyCode: KeyCode, modifiers: [ModifierKey]) throws {
         guard device != nil else {
             throw KeyboardError.deviceNotActive
         }
@@ -253,7 +253,7 @@ public class VirtualKeyboard {
     }
 
     /// Taps a key (press and release)
-    public func tapKey(_ keyCode: KeyCode, modifiers: [ModifierKey] = []) throws {
+    public func tapKey(_ keyCode: KeyCode, modifiers: [ModifierKey]) throws {
         try pressKey(keyCode, modifiers: modifiers)
         // Delay to ensure the key press is registered (10ms minimum for reliable detection)
         usleep(10000) // 10ms
