@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Required for creating virtual HID devices -->
+    <key>com.apple.developer.hid.virtual.device</key>
+    <true/>
+
+    <!-- Note: This entitlement requires:
+         1. An Apple Developer Program membership ($99/year)
+         2. App signed with a Developer ID Application certificate
+         3. Proper provisioning profile
+
+         Without this entitlement, IOHIDUserDeviceCreate will fail.
+
+         To add this to your Xcode project:
+         1. Select your target
+         2. Go to Signing & Capabilities
+         3. Click + Capability
+         4. Add "HID Virtual Device" capability
+
+         For command-line builds with swift build, you need to:
+         1. Code sign your binary: codesign -s "Developer ID Application: Your Name" -f --entitlements G13HIDApp.entitlements .build/debug/G13HIDApp
+         2. The entitlement must be included in your provisioning profile
+    -->
+</dict>
+</plist>

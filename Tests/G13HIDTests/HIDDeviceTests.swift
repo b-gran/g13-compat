@@ -19,7 +19,7 @@ final class HIDDeviceTests: XCTestCase {
             XCTAssertNotNil(device, "HIDDevice should be successfully initialized")
         } catch HIDDeviceError.permissionDenied {
             // This is expected when running without proper permissions
-            print("Test skipped: HID access permission denied (this is normal when running without sudo)")
+            log("Test skipped: HID access permission denied (this is normal when running without sudo)")
         } catch {
             XCTFail("Unexpected error: \(error)")
         }

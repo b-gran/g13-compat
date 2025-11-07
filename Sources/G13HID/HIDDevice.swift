@@ -69,14 +69,14 @@ public class HIDDevice {
 
             // Create keyboard output based on config
             let outputMode = config.getConfig().keyboardOutputMode
-            print("Keyboard output mode: \(outputMode.description)")
+            log("Keyboard output mode: \(outputMode.description)")
 
             let keyboard: KeyboardOutput
             if let kb = KeyboardOutputFactory.create(mode: outputMode) {
                 keyboard = kb
                 self.keyboardOutput = kb
             } else {
-                print("Failed to create keyboard with mode \(outputMode), falling back to CGEvent")
+                log("Failed to create keyboard with mode \(outputMode), falling back to CGEvent")
                 keyboard = CGEventKeyboard()
                 self.keyboardOutput = keyboard
             }
@@ -98,11 +98,11 @@ public class HIDDevice {
             joystick.dutyCycleRatio = config.getConfig().joystick.dutyCycleRatio
             self.joystickController = joystick
 
-            print("Keyboard output initialized successfully")
-            print("Config loaded from: \(config.getConfigPath().path)")
+            log("Keyboard output initialized successfully")
+            log("Config loaded from: \(config.getConfigPath().path)")
         } catch {
-            print("Warning: Failed to initialize keyboard output: \(error)")
-            print("Device will run in monitor-only mode")
+            log("Warning: Failed to initialize keyboard output: \(error)")
+            log("Device will run in monitor-only mode")
         }
 
         try setupDeviceManager()
@@ -167,12 +167,12 @@ public class HIDDevice {
         
         let manufacturer = IOHIDDeviceGetProperty(device, kIOHIDManufacturerKey as CFString) as? String ?? "Unknown"
         let product = IOHIDDeviceGetProperty(device, kIOHIDProductKey as CFString) as? String ?? "Unknown"
-        
-        print("G13 device connected:")
-        print("Manufacturer: \(manufacturer)")
-        print("Product: \(product)")
-        print("Vendor ID: \(String(format: "0x%04X", vendorID))")
-        print("Product ID: \(String(format: "0x%04X", productID))")
+
+        log("G13 device connected:")
+        log("Manufacturer: \(manufacturer)")
+        log("Product: \(product)")
+        log("Vendor ID: \(String(format: "0x%04X", vendorID))")
+        log("Product ID: \(String(format: "0x%04X", productID))")
         
         // Register for input reports
         let inputCallback: IOHIDValueCallback = { context, result, sender, value in
@@ -191,7 +191,7 @@ public class HIDDevice {
     
     private func handleDeviceRemoval(device: IOHIDDevice) {
         if device == self.device {
-            print("G13 device disconnected")
+            log("G13 device disconnected")
             self.device = nil
             delegate?.hidDeviceDidDisconnect(self)
         }
@@ -207,6 +207,9 @@ public class HIDDevice {
         let intValue = Int64(IOHIDValueGetIntegerValue(value))
 
         let rawData = Array(UnsafeBufferPointer(start: data, count: Int(length)))
+
+        // Debug: Log vendor-specific data structure
+        log("📥 HID: len=\(rawData.count) bytes=\(rawData.prefix(8).map { String(format: "%02X", $0) }.joined(separator: " "))")
 
         let inputData = HIDInputData(
             timestamp: timestamp,

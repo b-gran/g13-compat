@@ -26,6 +26,7 @@ public class KeyMapper {
     public func processInput(_ data: HIDInputData) {
         // Handle button presses (G keys)
         if data.usagePage == buttonUsagePage {
+            log("⚡️ KeyMapper detected button input: usagePage=0x\(String(format: "%02X", data.usagePage)), usage=0x\(String(format: "%02X", data.usage)), value=\(data.intValue)")
             handleGKey(usage: data.usage, pressed: data.intValue != 0)
         }
 
@@ -36,9 +37,12 @@ public class KeyMapper {
         // Calculate G key number (G1 = usage 1, G2 = usage 2, etc.)
         let gKeyNumber = Int(usage)
 
+        log("🎮 KeyMapper.handleGKey: G\(gKeyNumber) \(pressed ? "pressed" : "released")")
+
         if pressed && !pressedGKeys.contains(gKeyNumber) {
             // Key press
             pressedGKeys.insert(gKeyNumber)
+            log("➡️  Executing action for G\(gKeyNumber)")
             executeGKeyAction(gKeyNumber)
         } else if !pressed && pressedGKeys.contains(gKeyNumber) {
             // Key release
@@ -49,7 +53,7 @@ public class KeyMapper {
     private func executeGKeyAction(_ gKeyNumber: Int) {
         // Find the configuration for this G key
         guard let keyConfig = config.gKeys.first(where: { $0.keyNumber == gKeyNumber }) else {
-            print("No configuration found for G\(gKeyNumber)")
+            log("No configuration found for G\(gKeyNumber)")
             return
         }
 
@@ -70,24 +74,26 @@ public class KeyMapper {
         macroEngine.executeMacro(key: macroName) { result in
             switch result {
             case .success():
-                print("Executed macro: \(macroName)")
+                log("Executed macro: \(macroName)")
             case .failure(let error):
-                print("Failed to execute macro \(macroName): \(error)")
+                log("Failed to execute macro \(macroName): \(error)")
             }
         }
     }
 
     private func executeKeyTap(_ keyString: String) {
+        log("⌨️  KeyMapper.executeKeyTap: \(keyString)")
+
         guard let keyCode = VirtualKeyboard.keyCodeFromString(keyString) else {
-            print("Invalid key: \(keyString)")
+            log("❌ Invalid key: \(keyString)")
             return
         }
 
         do {
             try keyboard.tapKey(keyCode)
-            print("Tapped key: \(keyString)")
+            log("✅ Tapped key: \(keyString)")
         } catch {
-            print("Failed to tap key \(keyString): \(error)")
+            log("❌ Failed to tap key \(keyString): \(error)")
         }
     }
 

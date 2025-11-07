@@ -23,11 +23,11 @@ private func IOHIDUserDeviceHandleReport(
 // Without this entitlement, IOHIDUserDeviceCreate will fail
 private func createVirtualDevice(properties: CFDictionary) -> VirtualHIDDevice? {
     guard let device = IOHIDUserDeviceCreate(kCFAllocatorDefault, properties) else {
-        print("Error: IOHIDUserDeviceCreate failed")
-        print("Ensure you have the com.apple.developer.hid.virtual.device entitlement")
-        print("Add this to your entitlements file:")
-        print("  <key>com.apple.developer.hid.virtual.device</key>")
-        print("  <true/>")
+        log("Error: IOHIDUserDeviceCreate failed")
+        log("Ensure you have the com.apple.developer.hid.virtual.device entitlement")
+        log("Add this to your entitlements file:")
+        log("  <key>com.apple.developer.hid.virtual.device</key>")
+        log("  <true/>")
         return nil
     }
     return device
