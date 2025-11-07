@@ -1,36 +1,51 @@
 import Foundation
-import IOKit
 import IOKit.hid
 
-#if canImport(IOKit.hid)
-// IOHIDUserDevice functions - these are available in macOS 10.15+ but may need runtime checking
-// For now, we'll use a mock implementation for compatibility
+// IOHIDUserDevice type alias
+private typealias VirtualHIDDevice = IOHIDUserDevice
 
-// Opaque type for virtual device
-private typealias VirtualHIDDevice = OpaquePointer
+// Declare IOHIDUserDevice C functions that aren't exposed to Swift
+@_silgen_name("IOHIDUserDeviceCreate")
+private func IOHIDUserDeviceCreate(
+    _ allocator: CFAllocator?,
+    _ properties: CFDictionary
+) -> IOHIDUserDevice?
 
-// Mock implementation - in production, you'll need to implement actual HID device creation
-// This might require additional entitlements or system extensions on recent macOS versions
+@_silgen_name("IOHIDUserDeviceHandleReport")
+private func IOHIDUserDeviceHandleReport(
+    _ device: IOHIDUserDevice,
+    _ report: UnsafePointer<UInt8>,
+    _ reportLength: CFIndex
+) -> IOReturn
+
+// Create a virtual HID device
+// NOTE: Requires com.apple.developer.hid.virtual.device entitlement on modern macOS
+// Without this entitlement, IOHIDUserDeviceCreate will fail
 private func createVirtualDevice(properties: CFDictionary) -> VirtualHIDDevice? {
-    // Note: IOHIDUserDeviceCreate is not publicly available in standard IOKit
-    // You may need to:
-    // 1. Use DriverKit for system extensions (macOS 10.15+)
-    // 2. Use deprecated IOKit APIs with SIP disabled (not recommended)
-    // 3. Use a kernel extension (requires special signing)
-
-    // For now, return nil to indicate feature not available
-    print("Warning: Virtual HID device creation is not available without system extensions")
-    return nil
-}
-
-private func sendReport(_ device: VirtualHIDDevice?, _ data: Data) -> IOReturn {
-    guard device != nil else {
-        return kIOReturnError
+    guard let device = IOHIDUserDeviceCreate(kCFAllocatorDefault, properties) else {
+        print("Error: IOHIDUserDeviceCreate failed")
+        print("Ensure you have the com.apple.developer.hid.virtual.device entitlement")
+        print("Add this to your entitlements file:")
+        print("  <key>com.apple.developer.hid.virtual.device</key>")
+        print("  <true/>")
+        return nil
     }
-    // Mock implementation
-    return kIOReturnSuccess
+    return device
 }
-#endif
+
+// Send a HID report to the virtual device
+private func sendReport(_ device: VirtualHIDDevice?, _ data: Data) -> IOReturn {
+    guard let device = device else {
+        return kIOReturnNotOpen
+    }
+
+    return data.withUnsafeBytes { bytes in
+        guard let baseAddress = bytes.bindMemory(to: UInt8.self).baseAddress else {
+            return kIOReturnError
+        }
+        return IOHIDUserDeviceHandleReport(device, baseAddress, data.count)
+    }
+}
 
 /// Represents a virtual HID keyboard device using IOHIDUserDevice
 public class VirtualKeyboard {
@@ -193,17 +208,22 @@ public class VirtualKeyboard {
             0xC0               // End Collection
         ]
 
-        let properties: [String: Any] = [
-            kIOHIDReportDescriptorKey: Data(descriptor),
-            kIOHIDVendorIDKey: 0x05AC,  // Apple vendor ID
-            kIOHIDProductIDKey: 0x024F,  // Apple keyboard product ID
+        // Device properties - DO NOT use Apple's VID/PID in production
+        // Use your own or get proper IDs from USB-IF
+        let properties: [CFString: Any] = [
+            kIOHIDReportDescriptorKey: Data(descriptor) as CFData,
+            kIOHIDVendorIDKey: 0x1234,                    // Placeholder - change this
+            kIOHIDProductIDKey: 0x5678,                   // Placeholder - change this
             kIOHIDProductKey: "G13 Virtual Keyboard",
             kIOHIDManufacturerKey: "G13Compat",
             kIOHIDTransportKey: "Virtual",
             kIOHIDVersionNumberKey: 0x0100,
-            kIOHIDCountryCodeKey: 0,
-            kIOHIDLocationIDKey: 0
-        ]
+            kIOHIDPrimaryUsagePageKey: 0x01,              // Generic Desktop
+            kIOHIDPrimaryUsageKey: 0x06,                  // Keyboard
+            kIOHIDMaxInputReportSizeKey: 8,               // 8-byte input reports
+            kIOHIDMaxOutputReportSizeKey: 1,              // 1-byte LED output
+            kIOHIDMaxFeatureReportSizeKey: 0              // No feature reports
+        ] as [CFString: Any]
 
         guard let userDevice = createVirtualDevice(properties: properties as CFDictionary) else {
             throw KeyboardError.failedToCreateDevice
@@ -235,8 +255,8 @@ public class VirtualKeyboard {
     /// Taps a key (press and release)
     public func tapKey(_ keyCode: KeyCode, modifiers: [ModifierKey] = []) throws {
         try pressKey(keyCode, modifiers: modifiers)
-        // Small delay to ensure the key press is registered
-        usleep(1000) // 1ms
+        // Delay to ensure the key press is registered (10ms minimum for reliable detection)
+        usleep(10000) // 10ms
         try releaseKey(keyCode, modifiers: modifiers)
     }
 
@@ -266,7 +286,8 @@ public class VirtualKeyboard {
 
         // Byte 1: Reserved (always 0)
         // Bytes 2-7: Pressed keys (up to 6)
-        let keysArray = Array(pressedKeys.prefix(6))
+        // Sort keys to maintain stable ordering and prevent flickering
+        let keysArray = Array(pressedKeys).sorted().prefix(6)
         for (index, key) in keysArray.enumerated() {
             report[2 + index] = key
         }

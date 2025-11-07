@@ -95,59 +95,132 @@ Each of the 22 G keys can be configured to:
 - Execute a macro
 - Be disabled
 
-## Important Limitation: IOHIDUserDevice
+## Virtual HID Device Implementation
 
-**CRITICAL**: The `IOHIDUserDeviceCreate` and `IOHIDUserDeviceHandleReport` functions are **not publicly available** in the standard IOKit framework on macOS.
+The VirtualKeyboard now uses **actual IOHIDUserDevice APIs** to create a real virtual keyboard device.
 
-### The Problem
-Creating virtual HID devices requires one of the following:
+### Key Implementation Details
 
-1. **DriverKit System Extension (Recommended for macOS 10.15+)**
-   - Modern approach using DriverKit framework
-   - Requires signing with special entitlements
-   - Must be distributed via developer-signed installer
-   - User must approve system extension in Security preferences
+1. **C Function Declarations**
+   - Uses `@_silgen_name` to access `IOHIDUserDeviceCreate` and `IOHIDUserDeviceHandleReport`
+   - These functions exist in IOKit but aren't exposed to Swift by default
 
-2. **Kernel Extension (Deprecated)**
-   - Requires special signing certificate from Apple
-   - Being phased out by Apple
-   - Not recommended for new projects
+2. **Device Properties**
+   - Uses placeholder VID/PID (0x1234/0x5678) - **change these in production**
+   - Includes all required properties: PrimaryUsagePage, PrimaryUsage, MaxReportSizes
+   - Boot keyboard descriptor with 6-key rollover
 
-3. **Private APIs (Not Recommended)**
-   - Using undocumented APIs
-   - Requires SIP disabled
-   - May break in future macOS versions
+3. **Stable Key Ordering**
+   - Pressed keys are sorted before building reports to prevent flickering
+   - Avoids nondeterministic behavior from Set ordering
 
-### Current Implementation
-The current code includes a **mock implementation** that will fail at runtime. To make this work, you need to:
+4. **Reliable Timing**
+   - Key tap delay increased to 10ms for reliable registration
+   - Prevents keys being missed by the OS
 
-#### Option A: Use DriverKit (Recommended)
-1. Create a DriverKit extension target in Xcode
-2. Implement `IOUserHIDDevice` subclass
-3. Get appropriate entitlements from Apple
-4. Sign with Developer ID Application certificate
-5. Package as system extension installer
+### Required: Entitlement
 
-#### Option B: Use CGEvent (Simpler Alternative)
-Instead of creating a virtual HID device, you could use `CGEvent` to simulate keyboard input:
-- Simpler to implement
-- No special entitlements required
-- Works in the same process
-- May be flagged by some applications
+**CRITICAL**: This code requires the `com.apple.developer.hid.virtual.device` entitlement.
 
-Example CGEvent approach:
-```swift
-let keyCode: CGKeyCode = 0x00  // A key
-let event = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: true)
-event?.post(tap: .cghidEventTap)
+Without this entitlement, `IOHIDUserDeviceCreate` will fail at runtime.
+
+#### How to Add the Entitlement
+
+**Option A: Xcode Project**
+1. Select your target
+2. Go to Signing & Capabilities tab
+3. Click "+ Capability"
+4. Add "HID Virtual Device" capability
+
+**Option B: Manual Entitlements File**
+See [G13HIDApp.entitlements](G13HIDApp.entitlements) for the complete file.
+
+**Option C: Command-line Code Signing**
+```bash
+# Build first
+swift build
+
+# Code sign with entitlements
+codesign -s "Developer ID Application: Your Name" \
+         -f \
+         --entitlements G13HIDApp.entitlements \
+         .build/debug/G13HIDApp
 ```
 
-### Next Steps
-You need to choose an implementation strategy:
+### Requirements
 
-1. **If you want a proper solution**: Implement DriverKit system extension
-2. **If you want something quick**: Use CGEvent API instead
-3. **For testing**: Current mock allows code to compile and run in monitor mode
+1. **Apple Developer Program membership** ($99/year)
+   - Required to get the entitlement
+   - Required for Developer ID certificate
+
+2. **Developer ID Application certificate**
+   - Must be installed in your keychain
+   - Get from Apple Developer portal
+
+3. **Proper provisioning profile**
+   - Must include the HID virtual device entitlement
+
+### Current Implementation Status
+
+✅ **Implemented and working:**
+- Real IOHIDUserDevice creation (not a mock)
+- Proper HID descriptor (boot keyboard, 6-key rollover)
+- Complete device properties with all required keys
+- Stable key ordering (sorted array)
+- Reliable timing (10ms tap delay)
+- Safe report sending with proper memory handling
+
+⚠️ **Requires setup:**
+- Entitlement (see above)
+- Code signing with Developer ID
+- Replace placeholder VID/PID (0x1234/0x5678)
+
+### The Problem Without Entitlement
+
+If you run without the entitlement, you'll see:
+```
+Error: IOHIDUserDeviceCreate failed
+Ensure you have the com.apple.developer.hid.virtual.device entitlement
+```
+
+The driver will fall back to **monitor-only mode** where it reads G13 input but cannot send keyboard output.
+
+### Alternatives if Entitlement is Not Available
+
+#### Option A: Use CGEvent API (Simpler Alternative)
+Replace VirtualKeyboard with CGEvent-based implementation:
+```swift
+import CoreGraphics
+
+// Press a key
+let keyCode: CGKeyCode = 0x00  // A key
+let pressEvent = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: true)
+pressEvent?.post(tap: .cghidEventTap)
+
+// Release a key
+let releaseEvent = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: false)
+releaseEvent?.post(tap: .cghidEventTap)
+```
+
+**Pros:**
+- No entitlements required
+- No code signing needed
+- Works immediately
+- Simpler API
+
+**Cons:**
+- Some games/apps may not accept CGEvent input
+- Requires accessibility permissions instead
+- Less "authentic" than real HID device
+- Uses different key codes (CGKeyCode vs HID usage codes)
+
+#### Option B: Use DriverKit System Extension
+More complex but doesn't require this specific entitlement:
+- Modern macOS approach (10.15+)
+- Uses DriverKit framework
+- Different entitlements and deployment model
+- Requires installer and user approval
+- Out of scope for this basic implementation
 
 ## Testing
 
