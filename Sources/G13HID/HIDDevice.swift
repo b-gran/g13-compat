@@ -38,21 +38,62 @@ public class HIDDevice {
     private var isManagerOpen: Bool = false
     public weak var delegate: HIDDeviceDelegate?
     public var joystickSettings: JoystickSettings?
-    
+
+    // Virtual keyboard components
+    private var virtualKeyboard: VirtualKeyboard?
+    private var macroEngine: MacroEngine?
+    private var keyMapper: KeyMapper?
+    private var joystickController: JoystickController?
+    private var configManager: ConfigManager?
+
     // Constants for the G13
     private let vendorID: Int = 0x046D
     private let productID: Int = 0xC21C
-    
+
     // Joystick constants
     private let joystickUsagePage: UInt32 = 0x01  // Generic Desktop Controls
-    private let joystickUsage: UInt32 = 0x04      // Joystick
-    private let joystickThreshold: Int64 = 50     // Threshold for detecting joystick movement
-    
-    private var lastJoystickX: Int64 = 0
-    private var lastJoystickY: Int64 = 0
-    
-    public init() throws {
+    private let joystickXUsage: UInt32 = 0x30     // X axis
+    private let joystickYUsage: UInt32 = 0x31     // Y axis
+
+    // Track joystick state
+    private var joystickX: Int64 = 128
+    private var joystickY: Int64 = 128
+
+    public init(configPath: URL? = nil) throws {
         deviceManager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
+
+        // Initialize virtual keyboard and related components
+        do {
+            let keyboard = try VirtualKeyboard()
+            self.virtualKeyboard = keyboard
+
+            let macro = MacroEngine(keyboard: keyboard)
+            self.macroEngine = macro
+
+            let config = try ConfigManager(configPath: configPath)
+            self.configManager = config
+
+            // Register macros from config
+            for (key, macroObj) in config.getConfig().macros {
+                macro.registerMacro(key: key, macro: macroObj)
+            }
+
+            let mapper = KeyMapper(keyboard: keyboard, macroEngine: macro, config: config.getConfig())
+            self.keyMapper = mapper
+
+            let joystick = JoystickController(keyboard: keyboard)
+            joystick.deadzone = config.getConfig().joystick.deadzone
+            joystick.dutyCycleFrequency = config.getConfig().joystick.dutyCycleFrequency
+            joystick.dutyCycleRatio = config.getConfig().joystick.dutyCycleRatio
+            self.joystickController = joystick
+
+            print("Virtual keyboard initialized successfully")
+            print("Config loaded from: \(config.getConfigPath().path)")
+        } catch {
+            print("Warning: Failed to initialize virtual keyboard: \(error)")
+            print("Device will run in monitor-only mode")
+        }
+
         try setupDeviceManager()
     }
     
@@ -153,9 +194,9 @@ public class HIDDevice {
         let usagePage = IOHIDElementGetUsagePage(element)
         let usage = IOHIDElementGetUsage(element)
         let intValue = Int64(IOHIDValueGetIntegerValue(value))
-        
+
         let rawData = Array(UnsafeBufferPointer(start: data, count: Int(length)))
-        
+
         let inputData = HIDInputData(
             timestamp: timestamp,
             length: length,
@@ -164,36 +205,31 @@ public class HIDDevice {
             intValue: intValue,
             rawData: rawData
         )
-        
-        // Handle joystick input
-        if usagePage == joystickUsagePage && usage == joystickUsage {
-            handleJoystickInput(intValue)
+
+        // Handle joystick input with virtual keyboard
+        if usagePage == joystickUsagePage {
+            if usage == joystickXUsage {
+                joystickX = intValue
+                updateJoystickController()
+            } else if usage == joystickYUsage {
+                joystickY = intValue
+                updateJoystickController()
+            }
         }
-        
+
+        // Handle button/key input with key mapper
+        keyMapper?.processInput(inputData)
+
         delegate?.hidDevice(self, didReceiveInput: inputData)
     }
-    
-    private func handleJoystickInput(_ value: Int64) {
-        guard let settings = joystickSettings else { return }
-        
-        // Assuming joystick values are in the range -100 to 100
-        if value < -joystickThreshold && lastJoystickX >= -joystickThreshold {
-            // Left
-            print("Joystick Left: \(settings.calibration.leftKey)")
-        } else if value > joystickThreshold && lastJoystickX <= joystickThreshold {
-            // Right
-            print("Joystick Right: \(settings.calibration.rightKey)")
-        } else if value < -joystickThreshold && lastJoystickY >= -joystickThreshold {
-            // Up
-            print("Joystick Up: \(settings.calibration.upKey)")
-        } else if value > joystickThreshold && lastJoystickY <= joystickThreshold {
-            // Down
-            print("Joystick Down: \(settings.calibration.downKey)")
+
+    private func updateJoystickController() {
+        guard let controller = joystickController else { return }
+        guard let config = configManager?.getConfig() else { return }
+
+        if config.joystick.enabled {
+            controller.updateJoystickRaw(x: joystickX, y: joystickY)
         }
-        
-        // Update last values
-        lastJoystickX = value
-        lastJoystickY = value
     }
     
     private func IOHIDDeviceCreateMatchingDictionary(_ vendorID: Int, _ productID: Int) -> CFDictionary {
@@ -203,7 +239,55 @@ public class HIDDevice {
         return dict as CFDictionary
     }
     
+    // Public accessors for configuration
+    public func getConfigManager() -> ConfigManager? {
+        return configManager
+    }
+
+    public func getVirtualKeyboard() -> VirtualKeyboard? {
+        return virtualKeyboard
+    }
+
+    public func getMacroEngine() -> MacroEngine? {
+        return macroEngine
+    }
+
+    public func getJoystickController() -> JoystickController? {
+        return joystickController
+    }
+
+    /// Reload configuration from file
+    public func reloadConfig() throws {
+        guard let config = configManager else { return }
+
+        let newConfig = config.getConfig()
+
+        // Update macro engine
+        if let macro = macroEngine {
+            // Clear old macros and register new ones
+            for (key, macroObj) in newConfig.macros {
+                macro.registerMacro(key: key, macro: macroObj)
+            }
+        }
+
+        // Update key mapper
+        keyMapper?.updateConfig(newConfig)
+
+        // Update joystick controller settings
+        if let joystick = joystickController {
+            joystick.deadzone = newConfig.joystick.deadzone
+            joystick.dutyCycleFrequency = newConfig.joystick.dutyCycleFrequency
+            joystick.dutyCycleRatio = newConfig.joystick.dutyCycleRatio
+        }
+    }
+
     deinit {
+        // Stop joystick controller
+        joystickController?.stop()
+
+        // Release all keys
+        try? virtualKeyboard?.releaseAllKeys()
+
         if let device = device {
             IOHIDDeviceRegisterInputValueCallback(device, nil, nil)
         }
