@@ -173,6 +173,25 @@ public class HIDDevice {
         log("Product: \(product)")
         log("Vendor ID: \(String(format: "0x%04X", vendorID))")
         log("Product ID: \(String(format: "0x%04X", productID))")
+        log("Enumerating elements (usagePage:usage -> type,length,reportID)...")
+
+        if let elements = IOHIDDeviceCopyMatchingElements(device, nil, IOOptionBits(kIOHIDOptionsTypeNone)) as? [IOHIDElement] {
+            for element in elements {
+                let usagePage = IOHIDElementGetUsagePage(element)
+                let usage = IOHIDElementGetUsage(element)
+                let type = IOHIDElementGetType(element)
+                let reportSize = IOHIDElementGetReportSize(element)
+                let reportCount = IOHIDElementGetReportCount(element)
+                let reportID = IOHIDElementGetReportID(element)
+                // Filter out collections to reduce noise
+                if type != kIOHIDElementTypeCollection {
+                    log(String(format: "  • usagePage=0x%02X usage=0x%02X type=%d reportSize=%d bits reportCount=%d id=0x%02X",
+                                usagePage, usage, type.rawValue, reportSize, reportCount, reportID))
+                }
+            }
+        } else {
+            log("(No elements enumerated)")
+        }
         
         // Register for input reports
         let inputCallback: IOHIDValueCallback = { context, result, sender, value in
@@ -208,8 +227,13 @@ public class HIDDevice {
 
         let rawData = Array(UnsafeBufferPointer(start: data, count: Int(length)))
 
-        // Debug: Log vendor-specific data structure
-        log("📥 HID: len=\(rawData.count) bytes=\(rawData.prefix(8).map { String(format: "%02X", $0) }.joined(separator: " "))")
+        // Enhanced debug logging
+        log("📥 HID: len=\(rawData.count) usagePage=0x\(String(format: "%02X", usagePage)) usage=0x\(String(format: "%02X", usage)) int=\(intValue) bytes=\(rawData.prefix(16).map { String(format: "%02X", $0) }.joined(separator: " "))")
+
+        // If we are not getting per-button elements (expected usagePage 0x09), attempt raw report parsing
+        if usagePage != 0x09 && length == 7 {
+            parseRawG13Report(rawData)
+        }
 
         let inputData = HIDInputData(
             timestamp: timestamp,
@@ -244,6 +268,80 @@ public class HIDDevice {
         if config.joystick.enabled {
             controller.updateJoystickRaw(x: joystickX, y: joystickY)
         }
+    }
+
+    // MARK: - Raw Report Parsing (Fallback / Heuristic)
+
+    private var lastRawReport: [UInt8]? = nil
+    // Dynamic (auto-learn) mapping: (byteIndex<<8 | bitIndex) -> G key number (1-22)
+    private var bitToGKey: [Int: Int] = [:]
+    private var nextAssignableGKey: Int = 1
+    private let maxGKeys = 22
+
+    /// Heuristic parser for the 7-byte G13 input report when the system does not expose individual button elements.
+    /// This is an exploratory implementation: it logs bit transitions so we can map them to G key numbers empirically.
+    /// Strategy:
+    ///  - Compare with previous report (if any)
+    ///  - XOR to find changed bits across the first N bytes (we start with first 3 bytes assuming they contain G key bitmap)
+    ///  - For each changed bit, log press/release with a provisional key index
+    /// After collecting logs by pressing each G key individually, we can build a definitive bit->G# map.
+    private func parseRawG13Report(_ report: [UInt8]) {
+        let interestingBytes = min(report.count, 3) // assume first 3 bytes carry up to 24 button bits
+        if let previous = lastRawReport, previous.count >= interestingBytes {
+            for byteIndex in 0..<interestingBytes {
+                let before = previous[byteIndex]
+                let after = report[byteIndex]
+                let delta = before ^ after
+                if delta != 0 {
+                    for bit in 0..<8 { // low bit = bit0
+                        let mask: UInt8 = 1 << bit
+                        if (delta & mask) != 0 {
+                            let pressed = (after & mask) != 0
+                            let provisionalKeyNumber = byteIndex * 8 + bit + 1 // 1-based
+                            log("🧩 Heuristic bit change: byte=\(byteIndex) bit=\(bit) -> G? (provisional #\(provisionalKeyNumber)) \(pressed ? "DOWN" : "UP") rawByteBefore=\(String(format: "%02X", before)) rawByteAfter=\(String(format: "%02X", after)))")
+                            handleDynamicBit(byteIndex: byteIndex, bitIndex: bit, pressed: pressed, originalReport: report)
+                        }
+                    }
+                }
+            }
+        }
+        lastRawReport = report
+    }
+
+    // Auto-learn mapping: assign first unseen bit to next G key (prompt user to press G1..G22 in order)
+    private func handleDynamicBit(byteIndex: Int, bitIndex: Int, pressed: Bool, originalReport: [UInt8]) {
+        let key = (byteIndex << 8) | bitIndex
+        var gKeyNumber: Int
+        if let existing = bitToGKey[key] {
+            gKeyNumber = existing
+        } else {
+            guard nextAssignableGKey <= maxGKeys else { return }
+            gKeyNumber = nextAssignableGKey
+            bitToGKey[key] = gKeyNumber
+            nextAssignableGKey += 1
+            log("🆕 Learned mapping: byte=\(byteIndex) bit=\(bitIndex) -> G\(gKeyNumber)")
+            if nextAssignableGKey <= maxGKeys {
+                log("➡️  Press G\(nextAssignableGKey) to learn next mapping (or keep using out-of-order; assignment will proceed sequentially)")
+            } else {
+                log("✅ Learned all G key mappings (22).")
+            }
+        }
+
+        // Synthesize HIDInputData to reuse KeyMapper logic
+        let timestamp = mach_absolute_time()
+        let usagePage: UInt32 = 0x09 // button page
+        let usage: UInt32 = UInt32(gKeyNumber) // G key number
+        let intValue: Int64 = pressed ? 1 : 0
+
+        let inputData = HIDInputData(
+            timestamp: timestamp,
+            length: originalReport.count,
+            usagePage: usagePage,
+            usage: usage,
+            intValue: intValue,
+            rawData: originalReport
+        )
+        keyMapper?.processInput(inputData)
     }
     
     private func IOHIDDeviceCreateMatchingDictionary(_ vendorID: Int, _ productID: Int) -> CFDictionary {

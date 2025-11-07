@@ -12,12 +12,7 @@ public class CGEventKeyboard: KeyboardOutput {
         log("Note: Requires Accessibility permissions in System Preferences > Privacy & Security > Accessibility")
 
         // Check if we have accessibility permission
-        let trusted = AXIsProcessTrusted()
-        if trusted {
-            log("✅ Accessibility permission: GRANTED")
-        } else {
-            log("⚠️  Accessibility permission: NOT GRANTED - keyboard output will not work!")
-        }
+        diagnoseAccessibility()
     }
 
     public func pressKey(_ keyCode: VirtualKeyboard.KeyCode, modifiers: [VirtualKeyboard.ModifierKey]) throws {
@@ -26,6 +21,11 @@ public class CGEventKeyboard: KeyboardOutput {
         guard let cgKeyCode = mapToCGKeyCode(keyCode) else {
             log("❌ Failed to map key code: \(keyCode)")
             throw KeyboardError.unsupportedKey(keyCode)
+        }
+
+        guard AXIsProcessTrusted() else {
+            log("🚫 Cannot post keyDown (AXIsProcessTrusted == false). Open Accessibility prefs and enable this app.")
+            throw KeyboardError.accessibilityDenied
         }
 
         // Track pressed state
@@ -54,6 +54,11 @@ public class CGEventKeyboard: KeyboardOutput {
         guard let cgKeyCode = mapToCGKeyCode(keyCode) else {
             log("❌ Failed to map key code: \(keyCode)")
             throw KeyboardError.unsupportedKey(keyCode)
+        }
+
+        guard AXIsProcessTrusted() else {
+            log("🚫 Cannot post keyUp (AXIsProcessTrusted == false).")
+            throw KeyboardError.accessibilityDenied
         }
 
         // Remove from pressed state
@@ -204,6 +209,7 @@ public class CGEventKeyboard: KeyboardOutput {
     public enum KeyboardError: Error, LocalizedError {
         case unsupportedKey(VirtualKeyboard.KeyCode)
         case eventCreationFailed
+        case accessibilityDenied
 
         public var errorDescription: String? {
             switch self {
@@ -211,7 +217,23 @@ public class CGEventKeyboard: KeyboardOutput {
                 return "Unsupported key: \(key)"
             case .eventCreationFailed:
                 return "Failed to create CGEvent"
+            case .accessibilityDenied:
+                return "Accessibility permission denied (AXIsProcessTrusted == false)"
             }
+        }
+    }
+
+    // MARK: - Diagnostics
+
+    private func diagnoseAccessibility() {
+        let trusted = AXIsProcessTrusted()
+        if trusted {
+            log("✅ Accessibility permission: GRANTED")
+        } else {
+            log("⚠️  Accessibility permission: NOT GRANTED - keyboard output will not work!")
+            log("   Go to System Settings > Privacy & Security > Accessibility and enable: \(ProcessInfo.processInfo.processName)")
+            let bundleID = Bundle.main.bundleIdentifier ?? "(unknown bundle id)"
+            log("   Bundle ID: \(bundleID)")
         }
     }
 
