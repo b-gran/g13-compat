@@ -61,6 +61,10 @@ Press each G key individually and record which provisional number changes. Once 
 
 To disable the extra logging, comment out the `parseRawG13Report` call in `HIDDevice.handleInput`.
 
+### Test Suite & Entitlement
+
+Tests that previously instantiated the real `VirtualKeyboard` (requires HID virtual device entitlement) are now skipped by default. Logic tests use a `MockKeyboardOutput` so `swift test` runs clean without special signing. To re-enable hardware/entitlement tests, restore the original `VirtualKeyboardTests` and replace mocks with real instances.
+
 ## Usage
 
 ```swift

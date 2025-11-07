@@ -2,12 +2,12 @@ import XCTest
 @testable import G13HID
 
 final class JoystickControllerTests: XCTestCase {
-    var keyboard: VirtualKeyboard?
+    var keyboard: KeyboardOutput?
     var controller: JoystickController?
 
     override func setUp() {
         super.setUp()
-        keyboard = try? VirtualKeyboard()
+        keyboard = MockKeyboardOutput()
         if let kb = keyboard {
             controller = JoystickController(keyboard: kb)
         }
@@ -21,8 +21,8 @@ final class JoystickControllerTests: XCTestCase {
     }
 
     func testControllerInitialization() throws {
-        let kb = try VirtualKeyboard()
-        let ctrl = JoystickController(keyboard: kb)
+    let kb = MockKeyboardOutput()
+    let ctrl = JoystickController(keyboard: kb)
         XCTAssertNotNil(ctrl)
         XCTAssertEqual(ctrl.deadzone, 0.15)
         XCTAssertEqual(ctrl.dutyCycleFrequency, 60.0)

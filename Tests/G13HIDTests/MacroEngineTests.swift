@@ -2,12 +2,12 @@ import XCTest
 @testable import G13HID
 
 final class MacroEngineTests: XCTestCase {
-    var keyboard: VirtualKeyboard?
+    var keyboard: KeyboardOutput?
     var engine: MacroEngine?
 
     override func setUp() {
         super.setUp()
-        keyboard = try? VirtualKeyboard()
+        keyboard = MockKeyboardOutput()
         if let kb = keyboard {
             engine = MacroEngine(keyboard: kb)
         }
@@ -20,8 +20,8 @@ final class MacroEngineTests: XCTestCase {
     }
 
     func testEngineInitialization() throws {
-        let kb = try VirtualKeyboard()
-        let eng = MacroEngine(keyboard: kb)
+    let kb = MockKeyboardOutput()
+    let eng = MacroEngine(keyboard: kb)
         XCTAssertNotNil(eng)
     }
 

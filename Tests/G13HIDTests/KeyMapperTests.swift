@@ -2,7 +2,7 @@ import XCTest
 @testable import G13HID
 
 final class KeyMapperTests: XCTestCase {
-    var keyboard: VirtualKeyboard?
+    var keyboard: KeyboardOutput?
     var macroEngine: MacroEngine?
     var keyMapper: KeyMapper?
     var config: G13Config?
@@ -10,10 +10,9 @@ final class KeyMapperTests: XCTestCase {
     override func setUp() {
         super.setUp()
 
-        keyboard = try? VirtualKeyboard()
+        keyboard = MockKeyboardOutput()
         if let kb = keyboard {
             macroEngine = MacroEngine(keyboard: kb)
-
             config = G13Config.defaultConfig()
             if let cfg = config, let macro = macroEngine {
                 keyMapper = KeyMapper(keyboard: kb, macroEngine: macro, config: cfg)
@@ -30,8 +29,8 @@ final class KeyMapperTests: XCTestCase {
     }
 
     func testKeyMapperInitialization() throws {
-        let kb = try VirtualKeyboard()
-        let macro = MacroEngine(keyboard: kb)
+    let kb = MockKeyboardOutput()
+    let macro = MacroEngine(keyboard: kb)
         let cfg = G13Config.defaultConfig()
         let mapper = KeyMapper(keyboard: kb, macroEngine: macro, config: cfg)
 
@@ -152,8 +151,8 @@ final class KeyMapperTests: XCTestCase {
     }
 
     func testGKeyWithMacro() throws {
-        guard let mapper = keyMapper,
-              let macro = macroEngine else {
+      guard let mapper = keyMapper,
+          let macro = macroEngine else {
             throw XCTSkip("Components not available")
         }
 
