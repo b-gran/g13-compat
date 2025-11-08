@@ -26,7 +26,7 @@ final class JoystickControllerTests: XCTestCase {
         XCTAssertNotNil(ctrl)
         XCTAssertEqual(ctrl.deadzone, 0.15)
         XCTAssertEqual(ctrl.dutyCycleFrequency, 60.0)
-        XCTAssertEqual(ctrl.dutyCycleRatio, 0.5)
+        XCTAssertNil(ctrl.secondaryKey)
     }
 
     func testDeadzoneConfiguration() throws {
@@ -50,9 +50,9 @@ final class JoystickControllerTests: XCTestCase {
         // Test setting duty cycle parameters
         ctrl.dutyCycleFrequency = 30.0
         XCTAssertEqual(ctrl.dutyCycleFrequency, 30.0)
-
-        ctrl.dutyCycleRatio = 0.75
-        XCTAssertEqual(ctrl.dutyCycleRatio, 0.75)
+        // Ratio now derived dynamically; simulate mid angle for ~0.5 secondary ratio
+        ctrl.updateJoystick(x: cos(112.5 * .pi / 180.0), y: sin(112.5 * .pi / 180.0))
+        XCTAssertEqual(ctrl.secondaryRatio, 0.5, accuracy: 0.05)
     }
 
     func testJoystickCentered() throws {
@@ -75,6 +75,8 @@ final class JoystickControllerTests: XCTestCase {
 
         // Test cardinal directions
         XCTAssertNoThrow(ctrl.updateJoystick(x: 1.0, y: 0.0))   // Right
+        XCTAssertEqual(ctrl.primaryKey, .d)
+        XCTAssertNil(ctrl.secondaryKey)
         Thread.sleep(forTimeInterval: 0.05)
         ctrl.stop()
 
@@ -148,6 +150,7 @@ final class JoystickControllerTests: XCTestCase {
 
         // Start movement
         ctrl.updateJoystick(x: 1.0, y: 0.0)
+    XCTAssertEqual(ctrl.primaryKey, .d)
         Thread.sleep(forTimeInterval: 0.05)
 
         // Stop should clean up

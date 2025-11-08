@@ -71,6 +71,7 @@ public struct JoystickConfig: Codable {
     public var downKey: String
     public var leftKey: String
     public var rightKey: String
+    public var maxEventsPerSecond: Int? // Optional cap on key press/release events (secondary duty cycle throttle)
 
     public init(
         enabled: Bool = true,
@@ -80,7 +81,8 @@ public struct JoystickConfig: Codable {
         upKey: String = "w",
         downKey: String = "s",
         leftKey: String = "a",
-        rightKey: String = "d"
+        rightKey: String = "d",
+        maxEventsPerSecond: Int? = nil
     ) {
         self.enabled = enabled
         self.deadzone = deadzone
@@ -90,6 +92,7 @@ public struct JoystickConfig: Codable {
         self.downKey = downKey
         self.leftKey = leftKey
         self.rightKey = rightKey
+        self.maxEventsPerSecond = maxEventsPerSecond
     }
 }
 

@@ -56,7 +56,7 @@ Key sections:
 - `keyboardOutputMode`: `cgEvent` (default) or `hidDevice`.
 - `macros`: Named macro definitions (see example). Each action: `{"type": "keyTap"|"keyPress"|"keyRelease"|"delay"|"text", ...}`.
 - `gKeys`: Maps G key numbers (1–22) to actions – either direct key tap or macro reference.
-- `joystick`: Analog configuration (enabled, deadzone, duty-cycle frequency/ratio, mapping of up/down/left/right).
+- `joystick`: Analog configuration (enabled, deadzone, duty-cycle frequency, optional maxEventsPerSecond throttle, mapping of up/down/left/right). Legacy field `dutyCycleRatio` (from older builds) is ignored if present.
 
 Reload behavior: Config is loaded once at startup and updates via explicit update calls (see `ConfigManager`).
 
@@ -90,9 +90,45 @@ Example JSON macro:
 Switch via config `keyboardOutputMode`. Fallback logic attempts HID then falls back to CGEvent.
 
 ### 6. Joystick Handling
-`JoystickController` reads analog axes, applies configurable deadzone (`deadzone`) and duty-cycle gating (`dutyCycleFrequency` & `dutyCycleRatio`) to reduce event spam. Emits mapped WASD-style keys based on directional quadrant resolution (including diagonals). Disable via `"enabled": false` in joystick config.
+`JoystickController` reads analog axes, applies configurable deadzone (`deadzone`) and duty-cycle gating (`dutyCycleFrequency`) to reduce event spam. Emits mapped WASD-style keys based on angular resolution (primary + optional secondary). Disable via `"enabled": false` in joystick config.
 
 Fallback axis extraction: On macOS versions where the G13 does not expose separate Generic Desktop X/Y elements, only a 7-byte vendor report (usagePage `0xFF00`) is received. In this case the first two bytes are heuristically treated as X/Y (center ≈ `0x80`) and normalized to the range -1.0..1.0. This enables joystick key emission even without dedicated axis elements. Debug logs prefixed with `VendorJoystick:` show raw and normalized values.
+
+New angular duty-cycle algorithm:
+The joystick now treats the nearest cardinal direction (Right=D, Up=W, Left=A, Down=S) as the primary key which is held continuously while outside the deadzone. A secondary key (adjacent clockwise or counter-clockwise) is duty-cycled based on angular offset from the primary anchor.
+
+Definitions:
+- Angle 0° = Right (D), 90° = Up (W), 180° = Left (A), 270° = Down (S).
+- The angular difference to the nearest cardinal is clamped to 0–45°. The secondary duty cycle ratio = (absDiff / 45). At 0° no secondary key. At 45° (true diagonal) secondary ratio = 1 (held continuously). At 22.5° ratio ≈ 0.5 (half the time pressed).
+- Secondary selection: determined by sign of angular deviation (positive = clockwise from anchor).
+
+Examples:
+| Approx Angle | Primary | Secondary | Secondary Ratio | Behavior |
+|--------------|---------|-----------|-----------------|----------|
+| 90° (Up) | W | — | 0.0 | Hold W only |
+| 112.5° (mid between Up and Up-Left) | W | A | 0.5 | Hold W; tap A with 50% duty cycle |
+| 135° (Up-Left diagonal) | W | A | 1.0 | Hold W and A continuously |
+| 22.5° (mid between Right and Up-Right) | D | W | 0.5 | Hold D; tap W with 50% duty cycle |
+| 315° (~Down-Right) | D | S | ratio depends on offset (e.g. 30° => 30/45 ≈ 0.67) | Hold D; S cycles 67% on |
+
+Timing: The secondary ON and OFF phases subdivide the base period (1 / `dutyCycleFrequency`) proportionally to the ratio. Minimum phase length is 5ms to avoid excessively rapid timers.
+
+Event throttling (`maxEventsPerSecond`):
+Set an optional cap to reduce total key press/release transitions while preserving the perceived duty-cycle ratio. The controller scales the effective period so that transitions per second do not exceed the cap. Roughly, each full secondary cycle (press+release) counts as 2 events. Example: with `dutyCycleFrequency = 60` and `ratio = 0.5`, naive transitions could be high; if `maxEventsPerSecond = 5`, the period is stretched so cycles per second ≈ `cap / 2` while keeping ON:OFF proportion. Omit or set `null` to disable throttling. Primary key remains continuously held and is not throttled.
+
+Example joystick config snippet:
+```json
+"joystick": {
+    "enabled": true,
+    "deadzone": 0.15,
+    "dutyCycleFrequency": 60.0,
+    "maxEventsPerSecond": 5,
+    "upKey": "w",
+    "downKey": "s",
+    "leftKey": "a",
+    "rightKey": "d"
+}
+```
 
 ### 7. Logging & Environment Variables
 Log file: `~/g13-debug.log`

@@ -3,49 +3,25 @@ import Foundation
 /// Controls joystick input and converts it to keyboard output with duty cycle
 public class JoystickController {
     private let keyboard: KeyboardOutput
-    private var dutyCycleTimer: Timer?
-    private var currentDirection: Direction = .none
-    private var dutyCyclePhase: DutyCyclePhase = .off
 
-    // Joystick state
-    private var joystickX: Double = 0.0
-    private var joystickY: Double = 0.0
+    // Public configuration
+    public var deadzone: Double = 0.15            // Threshold magnitude below which no output
+    public var dutyCycleFrequency: Double = 60.0  // Base cycles per second
+    public var maxEventsPerSecond: Int? = nil      // Optional cap limiting press/release transitions for secondary key
 
-    // Configuration
-    public var deadzone: Double = 0.15  // Deadzone threshold (0.0 to 1.0)
-    public var dutyCycleFrequency: Double = 60.0  // Hz
-    public var dutyCycleRatio: Double = 0.5  // 50% duty cycle
+    // Internal state exposed for tests via @testable import
+    var primaryKey: VirtualKeyboard.KeyCode? { currentPrimary }
+    var secondaryKey: VirtualKeyboard.KeyCode? { currentSecondary }
+    var secondaryRatio: Double { currentSecondaryRatio }
 
-    private enum Direction {
-        case none
-        case up
-        case down
-        case left
-        case right
-        case upLeft
-        case upRight
-        case downLeft
-        case downRight
+    // Current keys & ratio
+    private var currentPrimary: VirtualKeyboard.KeyCode? = nil
+    private var currentSecondary: VirtualKeyboard.KeyCode? = nil
+    private var currentSecondaryRatio: Double = 0.0 // 0..1 (fraction of cycle pressed)
 
-        var keys: [VirtualKeyboard.KeyCode] {
-            switch self {
-            case .none: return []
-            case .up: return [.w]
-            case .down: return [.s]
-            case .left: return [.a]
-            case .right: return [.d]
-            case .upLeft: return [.w, .a]
-            case .upRight: return [.w, .d]
-            case .downLeft: return [.s, .a]
-            case .downRight: return [.s, .d]
-            }
-        }
-    }
-
-    private enum DutyCyclePhase {
-        case on
-        case off
-    }
+    // Timers for secondary duty cycle (variable interval)
+    private var secondaryTimer: Timer?
+    private var secondaryPhaseIsOn: Bool = false
 
     public init(keyboard: KeyboardOutput) {
         self.keyboard = keyboard
@@ -53,106 +29,173 @@ public class JoystickController {
 
     /// Update joystick position (normalized -1.0 to 1.0)
     public func updateJoystick(x: Double, y: Double) {
-        joystickX = x
-        joystickY = y
+        let magnitude = sqrt(x * x + y * y)
+        if magnitude < deadzone {
+            // Centered: release everything
+            releasePrimary()
+            stopSecondaryCycle()
+            return
+        }
 
-        let newDirection = calculateDirection(x: x, y: y)
+        let angleDeg = normalizeAngleDegrees(atan2(y, x) * 180.0 / .pi) // 0° = right
+        let (primary, secondary, ratio) = computeKeys(angle: angleDeg)
+        apply(primary: primary, secondary: secondary, ratio: ratio)
+    }
 
-        if newDirection != currentDirection {
-            // Direction changed, release old keys and start new direction
-            stopDutyCycle()
-            currentDirection = newDirection
+    /// Compute primary key, secondary key, and duty cycle ratio based on angle.
+    /// - Parameter angle: normalized 0..360 degrees (0 = right, 90 = up)
+    /// - Returns: (primary, secondary, ratio) where ratio \in [0,1]
+    func computeKeys(angle: Double) -> (VirtualKeyboard.KeyCode?, VirtualKeyboard.KeyCode?, Double) {
+        // Cardinal anchors: Right(0), Up(90), Left(180), Down(270)
+        let anchors: [(deg: Double, key: VirtualKeyboard.KeyCode)] = [
+            (0, .d), (90, .w), (180, .a), (270, .s)
+        ]
+        // Find nearest cardinal anchor (min angular distance <= 45)
+        var best = anchors[0]
+        var bestDiff = angularDifference(angle, anchors[0].deg)
+        for candidate in anchors.dropFirst() {
+            let diff = angularDifference(angle, candidate.deg)
+            if abs(diff) < abs(bestDiff) {
+                best = candidate
+                bestDiff = diff
+            }
+        }
+        let primary = best.key
+        let diffAbs = abs(bestDiff)
+        let clamped = min(diffAbs, 45.0)
+        let ratio = clamped / 45.0 // 0 at anchor, 1 at diagonal
+        if ratio == 0 { return (primary, nil, 0) }
 
-            if newDirection != .none {
-                startDutyCycle()
+        // Determine secondary based on direction of deviation from anchor
+        let secondary: VirtualKeyboard.KeyCode
+        switch best.key {
+        case .w: secondary = bestDiff > 0 ? .a : .d   // Up -> toward + diff (clockwise) is left (NW), negative diff is right (NE)
+        case .d: secondary = bestDiff > 0 ? .w : .s   // Right -> toward NE (positive) up, toward SE (negative) down
+        case .a: secondary = bestDiff > 0 ? .s : .w   // Left -> toward SW (positive) down, toward NW (negative) up
+        case .s: secondary = bestDiff > 0 ? .d : .a   // Down -> toward SE (positive) right, toward SW (negative) left
+        default: secondary = .w // Fallback should never occur
+        }
+        return (primary, secondary, ratio)
+    }
+
+    private func apply(primary: VirtualKeyboard.KeyCode?, secondary: VirtualKeyboard.KeyCode?, ratio: Double) {
+        // Primary key changes
+        if currentPrimary != primary {
+            releasePrimary()
+            if let pk = primary { try? keyboard.pressKey(pk) }
+            currentPrimary = primary
+        }
+
+        // Secondary key or ratio changes
+        let secondaryChanged = currentSecondary != secondary
+        let ratioChanged = abs(currentSecondaryRatio - ratio) > 0.0001
+        if secondaryChanged || ratioChanged {
+            stopSecondaryCycle()
+            currentSecondary = secondary
+            currentSecondaryRatio = ratio
+            if let sk = secondary {
+                if ratio >= 0.999 { // Hold continuously
+                    try? keyboard.pressKey(sk)
+                } else if ratio <= 0.0001 { // No secondary
+                    // nothing
+                } else {
+                    // Start duty cycle
+                    startSecondaryCycle(key: sk, ratio: ratio)
+                }
             }
         }
     }
 
-    private func calculateDirection(x: Double, y: Double) -> Direction {
-        // Check if within deadzone
-        let magnitude = sqrt(x * x + y * y)
-        if magnitude < deadzone {
-            return .none
-        }
-
-        // Calculate angle (0° is right, 90° is up, etc.)
-        let angle = atan2(y, x) * 180.0 / .pi
-
-        // Normalize angle to 0-360
-        let normalizedAngle = angle < 0 ? angle + 360 : angle
-
-        // Determine direction based on angle
-        // Using 45-degree segments
-        switch normalizedAngle {
-        case 22.5..<67.5:
-            return .upRight
-        case 67.5..<112.5:
-            return .up
-        case 112.5..<157.5:
-            return .upLeft
-        case 157.5..<202.5:
-            return .left
-        case 202.5..<247.5:
-            return .downLeft
-        case 247.5..<292.5:
-            return .down
-        case 292.5..<337.5:
-            return .downRight
-        default:
-            return .right
-        }
+    private func releasePrimary() {
+        if let pk = currentPrimary { try? keyboard.releaseKey(pk) }
+        currentPrimary = nil
     }
 
-    private func startDutyCycle() {
-        dutyCyclePhase = .on
-        pressCurrentKeys()
+    private func stopSecondaryCycle() {
+        secondaryTimer?.invalidate()
+        secondaryTimer = nil
+        if let sk = currentSecondary { try? keyboard.releaseKey(sk) }
+        secondaryPhaseIsOn = false
+    }
 
-        let interval = 1.0 / dutyCycleFrequency
-        dutyCycleTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            self?.dutyCycleTick()
+    private func startSecondaryCycle(key: VirtualKeyboard.KeyCode, ratio: Double) {
+        // Begin with ON phase
+        secondaryPhaseIsOn = true
+        try? keyboard.pressKey(key)
+        scheduleSecondaryPhase(key: key, ratio: ratio, onPhase: true)
+    }
+
+    private func scheduleSecondaryPhase(key: VirtualKeyboard.KeyCode, ratio: Double, onPhase: Bool) {
+        let basePeriod = 1.0 / max(dutyCycleFrequency, 1.0)
+        // If a maxEventsPerSecond is set, enlarge period so total transitions do not exceed cap.
+        if let cap = maxEventsPerSecond, cap > 0 {
+            // Each full ON+OFF cycle produces 2 transitions; ensure 2 * cyclesPerSecond <= cap.
+            let allowedCyclesPerSecond = Double(cap) / 2.0
+            if allowedCyclesPerSecond < dutyCycleFrequency {
+                // Scale basePeriod up to respect cap
+                let scaledPeriod = 1.0 / allowedCyclesPerSecond
+                // Choose the larger (slower) of existing basePeriod and scaledPeriod
+                // to avoid accidentally speeding up.
+                // This keeps the ratio timing proportions while reducing transition frequency.
+                // The dutyCycleFrequency remains as configured for ratio semantics but period used for scheduling is adjusted.
+                // (We don't mutate dutyCycleFrequency to preserve original ratio computation semantics elsewhere.)
+                let effectivePeriod = max(basePeriod, scaledPeriod)
+                // Override basePeriod via local variable
+                // Recompute basePeriod components using effectivePeriod
+                let minInterval = 0.005
+                let interval: Double = {
+                    if onPhase {
+                        return max(effectivePeriod * ratio, minInterval)
+                    } else {
+                        return max(effectivePeriod * (1.0 - ratio), minInterval)
+                    }
+                }()
+                secondaryTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
+                    guard let self = self else { return }
+                    if onPhase {
+                        try? self.keyboard.releaseKey(key)
+                        self.secondaryPhaseIsOn = false
+                        self.scheduleSecondaryPhase(key: key, ratio: ratio, onPhase: false)
+                    } else {
+                        try? self.keyboard.pressKey(key)
+                        self.secondaryPhaseIsOn = true
+                        self.scheduleSecondaryPhase(key: key, ratio: ratio, onPhase: true)
+                    }
+                }
+                return
+            }
         }
-    }
-
-    private func stopDutyCycle() {
-        dutyCycleTimer?.invalidate()
-        dutyCycleTimer = nil
-        releaseCurrentKeys()
-        dutyCyclePhase = .off
-    }
-
-    private func dutyCycleTick() {
-        switch dutyCyclePhase {
-        case .on:
-            releaseCurrentKeys()
-            dutyCyclePhase = .off
-        case .off:
-            pressCurrentKeys()
-            dutyCyclePhase = .on
+        // Enforce minimal interval to avoid extremely short timers (<5ms)
+        let minInterval = 0.005
+        let interval: Double
+        if onPhase {
+            interval = max(basePeriod * ratio, minInterval)
+        } else {
+            interval = max(basePeriod * (1.0 - ratio), minInterval)
         }
-    }
-
-    private func pressCurrentKeys() {
-        for key in currentDirection.keys {
-            try? keyboard.pressKey(key)
-        }
-    }
-
-    private func releaseCurrentKeys() {
-        for key in currentDirection.keys {
-            try? keyboard.releaseKey(key)
+        secondaryTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
+            guard let self = self else { return }
+            if onPhase {
+                // Transition to OFF
+                try? self.keyboard.releaseKey(key)
+                self.secondaryPhaseIsOn = false
+                self.scheduleSecondaryPhase(key: key, ratio: ratio, onPhase: false)
+            } else {
+                // Transition to ON
+                try? self.keyboard.pressKey(key)
+                self.secondaryPhaseIsOn = true
+                self.scheduleSecondaryPhase(key: key, ratio: ratio, onPhase: true)
+            }
         }
     }
 
     /// Stop all joystick output
     public func stop() {
-        stopDutyCycle()
-        currentDirection = .none
+        releasePrimary()
+        stopSecondaryCycle()
     }
 
-    deinit {
-        stop()
-    }
+    deinit { stop() }
 }
 
 /// Extension to convert raw joystick values to normalized coordinates
@@ -165,4 +208,20 @@ extension JoystickController {
         // Invert Y axis (typically joystick Y is inverted)
         updateJoystick(x: normalizedX, y: -normalizedY)
     }
+}
+
+// MARK: - Angle helpers
+private func normalizeAngleDegrees(_ angle: Double) -> Double {
+    var a = angle
+    while a < 0 { a += 360 }
+    while a >= 360 { a -= 360 }
+    return a
+}
+
+/// Returns signed smallest difference (angle - anchor) in degrees in range [-180,180]
+private func angularDifference(_ angle: Double, _ anchor: Double) -> Double {
+    var diff = angle - anchor
+    while diff < -180 { diff += 360 }
+    while diff > 180 { diff -= 360 }
+    return diff
 }
