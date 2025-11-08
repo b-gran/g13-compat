@@ -2,6 +2,13 @@ import XCTest
 @testable import G13HID
 
 final class G13VendorReportParserTests: XCTestCase {
+    func testInitialPressEmitsDown() {
+        let parser = G13VendorReportParser()
+        // First report already has G1 pressed (byte2 bit0)
+        let changes = parser.process(report: [0,0,0b00000001,0,0,0,0])
+        XCTAssertEqual(changes, [GKeyStateChange(gKey: 1, down: true)], "Initial pressed bit should emit DOWN event on first report")
+    }
+
     func testNoPreviousReportYieldsNoChanges() {
         let parser = G13VendorReportParser()
         let changes = parser.process(report: [0,0,0,0,0,0,0])

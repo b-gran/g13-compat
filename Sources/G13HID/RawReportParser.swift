@@ -29,7 +29,9 @@ final class G13VendorReportParser: RawReportParser {
             return []
         }
         var changes: [GKeyStateChange] = []
+
         if let previous = lastReport, previous.count == report.count {
+            // Diff with previous report
             for byteIndex in [2,3,4] { // Relevant bytes
                 let before = previous[byteIndex]
                 let after = report[byteIndex]
@@ -43,9 +45,30 @@ final class G13VendorReportParser: RawReportParser {
                         let coord = BitCoordinate(byte: byteIndex, bit: bit)
                         if let gKey = mapping[coord] {
                             changes.append(GKeyStateChange(gKey: gKey, down: down))
-                            logDebug("RawReportParser: byte=\(byteIndex) bit=\(bit) -> G\(gKey) \(down ? "DOWN" : "UP") before=\(String(format: "%02X", before)) after=\(String(format: "%02X", after))")
+                            let beforeHex = String(format: "%02X", before)
+                            let afterHex = String(format: "%02X", after)
+                            let stateStr = down ? "DOWN" : "UP"
+                            logDebug("RawReportParser: byte=\(byteIndex) bit=\(bit) -> G\(gKey) \(stateStr) before=\(beforeHex) after=\(afterHex)")
                         } else {
                             logDebug("RawReportParser: unmapped bit change byte=\(byteIndex) bit=\(bit)")
+                        }
+                    }
+                }
+            }
+        } else {
+            // First report: emit DOWN events for any currently pressed bits.
+            for byteIndex in [2,3,4] {
+                let value = report[byteIndex]
+                let maxBit = (byteIndex == 4) ? 6 : 8
+                if value == 0 { continue }
+                for bit in 0..<maxBit {
+                    let mask: UInt8 = 1 << bit
+                    if (value & mask) != 0 {
+                        let coord = BitCoordinate(byte: byteIndex, bit: bit)
+                        if let gKey = mapping[coord] {
+                            changes.append(GKeyStateChange(gKey: gKey, down: true))
+                            let valueHex = String(format: "%02X", value)
+                            logDebug("RawReportParser initial: byte=\(byteIndex) bit=\(bit) -> G\(gKey) DOWN initialValue=\(valueHex)")
                         }
                     }
                 }
