@@ -4,120 +4,321 @@
     "quickSave": {
       "name": "Quick Save (F5)",
       "actions": [
-        {"type": "keyTap", "key": "f5"}
+        {
+          "type": "keyTap",
+          "key": "f5"
+        }
       ]
     },
     "quickLoad": {
       "name": "Quick Load (F9)",
       "actions": [
-        {"type": "keyTap", "key": "f9"}
+        {
+          "type": "keyTap",
+          "key": "f9"
+        }
       ]
     },
     "sprintJump": {
       "name": "Sprint + Jump",
       "actions": [
-        {"type": "keyPress", "key": "w"},
-        {"type": "delay", "milliseconds": 50},
-        {"type": "keyTap", "key": "space"},
-        {"type": "delay", "milliseconds": 200},
-        {"type": "keyRelease", "key": "w"}
+        {
+          "type": "keyPress",
+          "key": "w"
+        },
+        {
+          "type": "delay",
+          "milliseconds": 50
+        },
+        {
+          "type": "keyTap",
+          "key": "space"
+        },
+        {
+          "type": "delay",
+          "milliseconds": 200
+        },
+        {
+          "type": "keyRelease",
+          "key": "w"
+        }
       ]
     },
     "healPotion": {
       "name": "Use Health Potion",
       "actions": [
-        {"type": "keyTap", "key": "h"}
+        {
+          "type": "keyTap",
+          "key": "h"
+        }
       ]
     },
     "manaPotion": {
       "name": "Use Mana Potion",
       "actions": [
-        {"type": "keyTap", "key": "m"}
+        {
+          "type": "keyTap",
+          "key": "m"
+        }
       ]
     },
     "toggleCrouch": {
       "name": "Toggle Crouch",
       "actions": [
-        {"type": "keyTap", "key": "c"}
+        {
+          "type": "keyTap",
+          "key": "c"
+        }
       ]
     },
     "reloadWeapon": {
       "name": "Reload Weapon",
       "actions": [
-        {"type": "keyTap", "key": "r"}
+        {
+          "type": "keyTap",
+          "key": "r"
+        }
       ]
     },
     "switchWeapon": {
       "name": "Switch Weapon (1-2-1)",
       "actions": [
-        {"type": "keyTap", "key": "2"},
-        {"type": "delay", "milliseconds": 100},
-        {"type": "keyTap", "key": "1"}
+        {
+          "type": "keyTap",
+          "key": "2"
+        },
+        {
+          "type": "delay",
+          "milliseconds": 100
+        },
+        {
+          "type": "keyTap",
+          "key": "1"
+        }
       ]
     },
     "chatHello": {
       "name": "Type Hello in Chat",
       "actions": [
-        {"type": "keyTap", "key": "enter"},
-        {"type": "delay", "milliseconds": 50},
-        {"type": "text", "text": "hello"},
-        {"type": "keyTap", "key": "enter"}
+        {
+          "type": "keyTap",
+          "key": "enter"
+        },
+        {
+          "type": "delay",
+          "milliseconds": 50
+        },
+        {
+          "type": "text",
+          "text": "hello"
+        },
+        {
+          "type": "keyTap",
+          "key": "enter"
+        }
       ]
     },
     "ability1": {
       "name": "Ability Slot 1",
       "actions": [
-        {"type": "keyTap", "key": "1"}
+        {
+          "type": "keyTap",
+          "key": "1"
+        }
       ]
     },
     "ability2": {
       "name": "Ability Slot 2",
       "actions": [
-        {"type": "keyTap", "key": "2"}
+        {
+          "type": "keyTap",
+          "key": "2"
+        }
       ]
     },
     "ability3": {
       "name": "Ability Slot 3",
       "actions": [
-        {"type": "keyTap", "key": "3"}
+        {
+          "type": "keyTap",
+          "key": "3"
+        }
       ]
     },
     "ability4": {
       "name": "Ability Slot 4",
       "actions": [
-        {"type": "keyTap", "key": "4"}
+        {
+          "type": "keyTap",
+          "key": "4"
+        }
       ]
     },
     "ultimate": {
       "name": "Ultimate Ability",
       "actions": [
-        {"type": "keyTap", "key": "q"}
+        {
+          "type": "keyTap",
+          "key": "q"
+        }
       ]
     }
   },
   "gKeys": [
-    {"keyNumber": 1, "action": {"type": "macro", "macroName": "ability1"}},
-    {"keyNumber": 2, "action": {"type": "macro", "macroName": "ability2"}},
-    {"keyNumber": 3, "action": {"type": "macro", "macroName": "ability3"}},
-    {"keyNumber": 4, "action": {"type": "macro", "macroName": "ability4"}},
-    {"keyNumber": 5, "action": {"type": "macro", "macroName": "ultimate"}},
-    {"keyNumber": 6, "action": {"type": "macro", "macroName": "healPotion"}},
-    {"keyNumber": 7, "action": {"type": "macro", "macroName": "manaPotion"}},
-    {"keyNumber": 8, "action": {"type": "macro", "macroName": "reloadWeapon"}},
-    {"keyNumber": 9, "action": {"type": "macro", "macroName": "switchWeapon"}},
-    {"keyNumber": 10, "action": {"type": "macro", "macroName": "toggleCrouch"}},
-    {"keyNumber": 11, "action": {"type": "macro", "macroName": "quickSave"}},
-    {"keyNumber": 12, "action": {"type": "macro", "macroName": "quickLoad"}},
-    {"keyNumber": 13, "action": {"type": "keyTap", "key": "5"}},
-    {"keyNumber": 14, "action": {"type": "keyTap", "key": "6"}},
-    {"keyNumber": 15, "action": {"type": "keyTap", "key": "7"}},
-    {"keyNumber": 16, "action": {"type": "keyTap", "key": "8"}},
-    {"keyNumber": 17, "action": {"type": "keyTap", "key": "9"}},
-    {"keyNumber": 18, "action": {"type": "keyTap", "key": "0"}},
-    {"keyNumber": 19, "action": {"type": "keyTap", "key": "tab"}},
-    {"keyNumber": 20, "action": {"type": "keyTap", "key": "escape"}},
-    {"keyNumber": 21, "action": {"type": "keyTap", "key": "f11"}},
-    {"keyNumber": 22, "action": {"type": "keyTap", "key": "f12"}}
+    {
+      "keyNumber": 1,
+      "action": {
+        "type": "macro",
+        "macroName": "ability1"
+      }
+    },
+    {
+      "keyNumber": 2,
+      "action": {
+        "type": "macro",
+        "macroName": "ability2"
+      }
+    },
+    {
+      "keyNumber": 3,
+      "action": {
+        "type": "macro",
+        "macroName": "ability3"
+      }
+    },
+    {
+      "keyNumber": 4,
+      "action": {
+        "type": "macro",
+        "macroName": "ability4"
+      }
+    },
+    {
+      "keyNumber": 5,
+      "action": {
+        "type": "macro",
+        "macroName": "ultimate"
+      }
+    },
+    {
+      "keyNumber": 6,
+      "action": {
+        "type": "macro",
+        "macroName": "healPotion"
+      }
+    },
+    {
+      "keyNumber": 7,
+      "action": {
+        "type": "macro",
+        "macroName": "manaPotion"
+      }
+    },
+    {
+      "keyNumber": 8,
+      "action": {
+        "type": "macro",
+        "macroName": "reloadWeapon"
+      }
+    },
+    {
+      "keyNumber": 9,
+      "action": {
+        "type": "macro",
+        "macroName": "switchWeapon"
+      }
+    },
+    {
+      "keyNumber": 10,
+      "action": {
+        "type": "macro",
+        "macroName": "toggleCrouch"
+      }
+    },
+    {
+      "keyNumber": 11,
+      "action": {
+        "type": "macro",
+        "macroName": "quickSave"
+      }
+    },
+    {
+      "keyNumber": 12,
+      "action": {
+        "type": "macro",
+        "macroName": "quickLoad"
+      }
+    },
+    {
+      "keyNumber": 13,
+      "action": {
+        "type": "keyTap",
+        "key": "5"
+      }
+    },
+    {
+      "keyNumber": 14,
+      "action": {
+        "type": "keyTap",
+        "key": "6"
+      }
+    },
+    {
+      "keyNumber": 15,
+      "action": {
+        "type": "keyTap",
+        "key": "7"
+      }
+    },
+    {
+      "keyNumber": 16,
+      "action": {
+        "type": "keyTap",
+        "key": "8"
+      }
+    },
+    {
+      "keyNumber": 17,
+      "action": {
+        "type": "keyTap",
+        "key": "9"
+      }
+    },
+    {
+      "keyNumber": 18,
+      "action": {
+        "type": "keyTap",
+        "key": "0"
+      }
+    },
+    {
+      "keyNumber": 19,
+      "action": {
+        "type": "keyTap",
+        "key": "tab"
+      }
+    },
+    {
+      "keyNumber": 20,
+      "action": {
+        "type": "keyTap",
+        "key": "escape"
+      }
+    },
+    {
+      "keyNumber": 21,
+      "action": {
+        "type": "keyTap",
+        "key": "f11"
+      }
+    },
+    {
+      "keyNumber": 22,
+      "action": {
+        "type": "keyTap",
+        "key": "f12"
+      }
+    }
   ],
   "joystick": {
     "enabled": true,
