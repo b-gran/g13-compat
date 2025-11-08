@@ -4,6 +4,7 @@ import Foundation
 public class KeyMapper {
     private let keyboard: KeyboardOutput
     private let macroEngine: MacroEngine
+    private let executor: KeyboardActionExecutor
     private var config: G13Config
     private var pressedGKeys: Set<Int> = []
 
@@ -11,10 +12,18 @@ public class KeyMapper {
     private let buttonUsagePage: UInt32 = 0x09  // Button usage page
     private let gKeyBaseUsage: UInt32 = 0x01    // G1 starts at usage 0x01
 
-    public init(keyboard: KeyboardOutput, macroEngine: MacroEngine, config: G13Config) {
+    /// Designated initializer injecting an executor.
+    public init(keyboard: KeyboardOutput, macroEngine: MacroEngine, executor: KeyboardActionExecutor, config: G13Config) {
         self.keyboard = keyboard
         self.macroEngine = macroEngine
+        self.executor = executor
         self.config = config
+    }
+
+    /// Convenience initializer maintaining backwards compatibility.
+    public convenience init(keyboard: KeyboardOutput, macroEngine: MacroEngine, config: G13Config) {
+        let exec = KeyboardActionExecutor(keyboard: keyboard, macroEngine: macroEngine)
+        self.init(keyboard: keyboard, macroEngine: macroEngine, executor: exec, config: config)
     }
 
     /// Update the configuration
@@ -57,43 +66,19 @@ public class KeyMapper {
             return
         }
 
+        let action: KeyboardAction?
         switch keyConfig.action {
-        case .macro(let macroName):
-            executeMacro(macroName)
-
-        case .keyTap(let keyString):
-            executeKeyTap(keyString)
-
-        case .disabled:
-            // Do nothing
-            break
+        case .macro(let macroName): action = .macro(macroName)
+        case .keyTap(let keyString): action = .keyTap(keyString)
+        case .disabled: action = nil
         }
-    }
-
-    private func executeMacro(_ macroName: String) {
-        macroEngine.executeMacro(key: macroName) { result in
+        guard let actionToRun = action else { return }
+        log("➡️  Emitting action for G\(gKeyNumber): \(actionToRun)")
+        _ = executor.perform(actionToRun) { result in
             switch result {
-            case .success():
-                log("Executed macro: \(macroName)")
-            case .failure(let error):
-                log("Failed to execute macro \(macroName): \(error)")
+            case .success: log("✅ Action executed for G\(gKeyNumber)")
+            case .failure(let error): log("❌ Action failed for G\(gKeyNumber): \(error)")
             }
-        }
-    }
-
-    private func executeKeyTap(_ keyString: String) {
-        log("⌨️  KeyMapper.executeKeyTap: \(keyString)")
-
-        guard let keyCode = VirtualKeyboard.keyCodeFromString(keyString) else {
-            log("❌ Invalid key: \(keyString)")
-            return
-        }
-
-        do {
-            try keyboard.tapKey(keyCode)
-            log("✅ Tapped key: \(keyString)")
-        } catch {
-            log("❌ Failed to tap key \(keyString): \(error)")
         }
     }
 
