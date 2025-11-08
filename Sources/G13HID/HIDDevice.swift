@@ -45,6 +45,7 @@ public class HIDDevice {
     private var keyMapper: KeyMapper?
     private var joystickController: JoystickController?
     private var configManager: ConfigManager?
+    private var rawReportParser: RawReportParser? = G13VendorReportParser()
 
     // Constants for the G13
     private let vendorID: Int = 0x046D
@@ -230,9 +231,22 @@ public class HIDDevice {
         // Enhanced debug logging
         log("📥 HID: len=\(rawData.count) usagePage=0x\(String(format: "%02X", usagePage)) usage=0x\(String(format: "%02X", usage)) int=\(intValue) bytes=\(rawData.prefix(16).map { String(format: "%02X", $0) }.joined(separator: " "))")
 
-        // If we are not getting per-button elements (expected usagePage 0x09), attempt raw report parsing
-        if usagePage != 0x09 && length == 7 {
-            parseRawG13Report(rawData)
+        // Fallback raw report parsing when individual button elements are absent.
+        if usagePage != 0x09 && length == 7, let parser = rawReportParser {
+            let changes = parser.process(report: rawData)
+            if !changes.isEmpty {
+                for change in changes {
+                    let synthesized = HIDInputData(
+                        timestamp: mach_absolute_time(),
+                        length: rawData.count,
+                        usagePage: 0x09, // button usage page
+                        usage: UInt32(change.gKey),
+                        intValue: change.down ? 1 : 0,
+                        rawData: rawData
+                    )
+                    keyMapper?.processInput(synthesized)
+                }
+            }
         }
 
         let inputData = HIDInputData(
@@ -270,73 +284,6 @@ public class HIDDevice {
         }
     }
 
-    // MARK: - Raw Report Parsing (Fallback / Heuristic)
-
-    private var lastRawReport: [UInt8]? = nil
-    // Static mapping derived from analysis:
-    // Byte2 bits 0-7 => G1..G8
-    // Byte3 bits 0-7 => G9..G16
-    // Byte4 bits 0-5 => G17..G22 (bit7 constant axis base, bit6 unused)
-    private let staticBitMapping: [Int: Int] = {
-        var dict: [Int:Int] = [:]
-        // Helper closure
-        let encode: (Int,Int)->Int = { (byte,bit) in (byte << 8) | bit }
-        // G1..G8
-        for bit in 0..<8 { dict[encode(2, bit)] = bit + 1 }
-        // G9..G16
-        for bit in 0..<8 { dict[encode(3, bit)] = bit + 9 }
-        // G17..G22 (bits 0..5 of byte 4)
-        for bit in 0..<6 { dict[encode(4, bit)] = bit + 17 }
-        return dict
-    }()
-
-    /// Heuristic parser for the 7-byte G13 input report when the system does not expose individual button elements.
-    /// This is an exploratory implementation: it logs bit transitions so we can map them to G key numbers empirically.
-    /// Strategy:
-    ///  - Compare with previous report (if any)
-    ///  - XOR to find changed bits across the first N bytes (we start with first 3 bytes assuming they contain G key bitmap)
-    ///  - For each changed bit, log press/release with a provisional key index
-    /// After collecting logs by pressing each G key individually, we can build a definitive bit->G# map.
-    private func parseRawG13Report(_ report: [UInt8]) {
-        // We only care about bytes 2,3,4 (indices) for key state
-        let keyBytes = [2,3,4]
-        if let previous = lastRawReport, previous.count == report.count {
-            for byteIndex in keyBytes where byteIndex < report.count {
-                let before = previous[byteIndex]
-                let after = report[byteIndex]
-                let delta = before ^ after
-                if delta == 0 { continue }
-                // Limit bits for byte 4 to 0..5 and ignore high constants (bit7 often joystick base, bit6 unused)
-                let maxBit = (byteIndex == 4) ? 6 : 8
-                for bit in 0..<maxBit {
-                    let mask: UInt8 = 1 << bit
-                    if (delta & mask) != 0 {
-                        let pressed = (after & mask) != 0
-                        let encoding = (byteIndex << 8) | bit
-                        if let gKeyNumber = staticBitMapping[encoding] {
-                            log("🧩 Bit change: byte=\(byteIndex) bit=\(bit) -> G\(gKeyNumber) \(pressed ? "DOWN" : "UP") rawBefore=\(String(format: "%02X", before)) rawAfter=\(String(format: "%02X", after))")
-                            synthesizeGKey(gKeyNumber: gKeyNumber, pressed: pressed, originalReport: report)
-                        } else {
-                            log("🧩 Unmapped bit change ignored: byte=\(byteIndex) bit=\(bit)")
-                        }
-                    }
-                }
-            }
-        }
-        lastRawReport = report
-    }
-    private func synthesizeGKey(gKeyNumber: Int, pressed: Bool, originalReport: [UInt8]) {
-        let timestamp = mach_absolute_time()
-        let inputData = HIDInputData(
-            timestamp: timestamp,
-            length: originalReport.count,
-            usagePage: 0x09,
-            usage: UInt32(gKeyNumber),
-            intValue: pressed ? 1 : 0,
-            rawData: originalReport
-        )
-        keyMapper?.processInput(inputData)
-    }
     
     private func IOHIDDeviceCreateMatchingDictionary(_ vendorID: Int, _ productID: Int) -> CFDictionary {
         var dict: [String: Any] = [:]
