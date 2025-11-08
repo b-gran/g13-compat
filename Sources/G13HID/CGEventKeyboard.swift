@@ -84,8 +84,17 @@ public class CGEventKeyboard: KeyboardOutput {
     public func tapKey(_ keyCode: VirtualKeyboard.KeyCode, modifiers: [VirtualKeyboard.ModifierKey]) throws {
         log("🟢 CGEventKeyboard.tapKey called: \(keyCode)")
         try pressKey(keyCode, modifiers: modifiers)
-        usleep(10000) // 10ms delay
-        try releaseKey(keyCode, modifiers: modifiers)
+        let start = Date()
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + .milliseconds(10)) { [weak self] in
+            guard let self = self else { return }
+            do {
+                try self.releaseKey(keyCode, modifiers: modifiers)
+                let elapsed = Int(Date().timeIntervalSince(start) * 1000)
+                log("⏱ CGEventKeyboard async tap release (\(elapsed)ms) for key: \(keyCode)")
+            } catch {
+                log("❌ CGEventKeyboard async tap release failed for key: \(keyCode) error=\(error)")
+            }
+        }
     }
 
     public func releaseAllKeys() throws {

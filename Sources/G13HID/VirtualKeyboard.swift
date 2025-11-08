@@ -276,8 +276,14 @@ public class VirtualKeyboard: KeyboardOutput {
     public func tapKey(_ keyCode: KeyCode, modifiers: [ModifierKey]) throws {
         try pressKey(keyCode, modifiers: modifiers)
         // Delay to ensure the key press is registered (10ms minimum for reliable detection)
-        usleep(10000) // 10ms
-        try releaseKey(keyCode, modifiers: modifiers)
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + .milliseconds(10)) { [weak self] in
+            guard let self = self else { return }
+            do {
+                try self.releaseKey(keyCode, modifiers: modifiers)
+            } catch {
+                log("VirtualKeyboard async tap release failed for key=\(keyCode) error=\(error)")
+            }
+        }
     }
 
     /// Releases all currently pressed keys
