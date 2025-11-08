@@ -51,6 +51,7 @@ private func sendReport(_ device: VirtualHIDDevice?, _ data: Data) -> IOReturn {
 public class VirtualKeyboard: KeyboardOutput {
     private var device: VirtualHIDDevice?
     private var pressedKeys: Set<UInt8> = []
+    private var activeModifiers: Set<ModifierKey> = [] // Held modifiers independent of per-key invocation
 
     public enum KeyboardError: Error, LocalizedError, Equatable {
         case failedToCreateDevice
@@ -257,9 +258,9 @@ public class VirtualKeyboard: KeyboardOutput {
         guard device != nil else {
             throw KeyboardError.deviceNotActive
         }
-
         pressedKeys.insert(keyCode.rawValue)
-        try sendKeyReport(modifiers: modifiers)
+        let allModifiers = combinedModifiers(with: modifiers)
+        try sendKeyReport(modifiers: allModifiers)
     }
 
     /// Releases a key
@@ -267,9 +268,9 @@ public class VirtualKeyboard: KeyboardOutput {
         guard device != nil else {
             throw KeyboardError.deviceNotActive
         }
-
         pressedKeys.remove(keyCode.rawValue)
-        try sendKeyReport(modifiers: modifiers)
+        let allModifiers = combinedModifiers(with: modifiers)
+        try sendKeyReport(modifiers: allModifiers)
     }
 
     /// Taps a key (press and release) asynchronously; invokes completion after release attempt.
@@ -299,9 +300,27 @@ public class VirtualKeyboard: KeyboardOutput {
         guard device != nil else {
             throw KeyboardError.deviceNotActive
         }
-
         pressedKeys.removeAll()
+        activeModifiers.removeAll()
         try sendKeyReport(modifiers: [])
+    }
+
+    // MARK: - Modifier Handling
+    public func pressModifier(_ modifier: ModifierKey) throws {
+        guard device != nil else { throw KeyboardError.deviceNotActive }
+        activeModifiers.insert(modifier)
+        try sendKeyReport(modifiers: Array(activeModifiers))
+    }
+
+    public func releaseModifier(_ modifier: ModifierKey) throws {
+        guard device != nil else { throw KeyboardError.deviceNotActive }
+        activeModifiers.remove(modifier)
+        try sendKeyReport(modifiers: Array(activeModifiers))
+    }
+
+    private func combinedModifiers(with transient: [ModifierKey]) -> [ModifierKey] {
+        if transient.isEmpty { return Array(activeModifiers) }
+        return Array(activeModifiers.union(transient))
     }
 
     /// Sends a keyboard report to the virtual device

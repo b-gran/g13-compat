@@ -16,11 +16,13 @@ public enum GKeyAction: Codable {
     case macro(String)  // Reference to a macro name
     case keyTap(String)  // Single key tap
     case disabled
+    case modifier(ModifierKind) // Acts as held modifier while pressed
 
     enum CodingKeys: String, CodingKey {
         case type
         case macroName
         case key
+        case modifier
     }
 
     public init(from decoder: Decoder) throws {
@@ -36,6 +38,9 @@ public enum GKeyAction: Codable {
             self = .keyTap(key)
         case "disabled":
             self = .disabled
+        case "modifier":
+            let mod = try container.decode(ModifierKind.self, forKey: .modifier)
+            self = .modifier(mod)
         default:
             throw DecodingError.dataCorruptedError(
                 forKey: .type,
@@ -57,8 +62,21 @@ public enum GKeyAction: Codable {
             try container.encode(key, forKey: .key)
         case .disabled:
             try container.encode("disabled", forKey: .type)
+        case .modifier(let kind):
+            try container.encode("modifier", forKey: .type)
+            try container.encode(kind, forKey: .modifier)
         }
     }
+}
+
+/// Supported logical modifier kinds user can assign to a G-key.
+public enum ModifierKind: String, Codable, CaseIterable {
+    case shift
+    case control
+    case alt
+    case command
+
+    public var displayName: String { rawValue.capitalized }
 }
 
 /// Joystick configuration

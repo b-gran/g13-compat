@@ -259,50 +259,50 @@
     {
       "keyNumber": 14,
       "action": {
-        "type": "keyTap",
-        "key": "6"
+        "type": "modifier",
+        "modifier": "shift"
       }
     },
     {
       "keyNumber": 15,
       "action": {
         "type": "keyTap",
-        "key": "7"
+        "key": "6"
       }
     },
     {
       "keyNumber": 16,
       "action": {
         "type": "keyTap",
-        "key": "8"
+        "key": "7"
       }
     },
     {
       "keyNumber": 17,
       "action": {
         "type": "keyTap",
-        "key": "9"
+        "key": "8"
       }
     },
     {
       "keyNumber": 18,
       "action": {
         "type": "keyTap",
-        "key": "0"
+        "key": "9"
       }
     },
     {
       "keyNumber": 19,
       "action": {
         "type": "keyTap",
-        "key": "tab"
+        "key": "0"
       }
     },
     {
       "keyNumber": 20,
       "action": {
         "type": "keyTap",
-        "key": "escape"
+        "key": "tab"
       }
     },
     {

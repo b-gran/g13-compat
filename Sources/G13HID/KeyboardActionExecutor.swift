@@ -28,6 +28,7 @@ public enum KeyboardActionError: Error, LocalizedError, Equatable {
 public final class KeyboardActionExecutor {
     private let keyboard: KeyboardOutput
     private let macroEngine: MacroEngine
+    private var activeModifiers: Set<VirtualKeyboard.ModifierKey> = []
 
     public init(keyboard: KeyboardOutput, macroEngine: MacroEngine) {
         self.keyboard = keyboard
@@ -67,9 +68,9 @@ public final class KeyboardActionExecutor {
         }
         do {
             switch op {
-            case .tap: try keyboard.tapKey(keyCode)
-            case .down: try keyboard.pressKey(keyCode)
-            case .up: try keyboard.releaseKey(keyCode)
+            case .tap: try keyboard.tapKey(keyCode, modifiers: Array(activeModifiers), completion: nil)
+            case .down: try keyboard.pressKey(keyCode, modifiers: Array(activeModifiers))
+            case .up: try keyboard.releaseKey(keyCode, modifiers: Array(activeModifiers))
             }
             completion?(.success(()))
             return .success(())
@@ -78,4 +79,30 @@ public final class KeyboardActionExecutor {
             return .failure(error)
         }
     }
+
+    // MARK: - Modifier Control
+    public func modifierDown(_ kind: ModifierKind) {
+        if let vk = mapModifier(kind) {
+            activeModifiers.insert(vk)
+            try? keyboard.pressModifier(vk)
+        }
+    }
+
+    public func modifierUp(_ kind: ModifierKind) {
+        if let vk = mapModifier(kind) {
+            activeModifiers.remove(vk)
+            try? keyboard.releaseModifier(vk)
+        }
+    }
+
+    private func mapModifier(_ kind: ModifierKind) -> VirtualKeyboard.ModifierKey? {
+        switch kind {
+        case .shift: return .leftShift
+        case .control: return .leftControl
+        case .alt: return .leftAlt
+        case .command: return .leftCommand
+        }
+    }
+
+    public func currentModifiers() -> [VirtualKeyboard.ModifierKey] { Array(activeModifiers) }
 }

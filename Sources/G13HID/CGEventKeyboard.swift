@@ -6,6 +6,7 @@ import ApplicationServices
 /// This implementation doesn't require entitlements but may not work in all apps
 public class CGEventKeyboard: KeyboardOutput {
     private var pressedKeys: Set<VirtualKeyboard.KeyCode> = []
+    private var activeModifiers: Set<VirtualKeyboard.ModifierKey> = []
 
     public init() {
         log("CGEventKeyboard initialized")
@@ -56,11 +57,9 @@ public class CGEventKeyboard: KeyboardOutput {
         // Track pressed state
         pressedKeys.insert(keyCode)
 
-        // Build modifier flags
+        let effectiveMods = combinedModifiers(transient: modifiers)
         var flags: CGEventFlags = []
-        for modifier in modifiers {
-            flags.insert(mapModifierFlags(modifier))
-        }
+        for modifier in effectiveMods { flags.insert(mapModifierFlags(modifier)) }
 
         // Send key down event
         guard let event = CGEvent(keyboardEventSource: nil, virtualKey: cgKeyCode, keyDown: true) else {
@@ -89,11 +88,9 @@ public class CGEventKeyboard: KeyboardOutput {
         // Remove from pressed state
         pressedKeys.remove(keyCode)
 
-        // Build modifier flags
+        let effectiveMods = combinedModifiers(transient: modifiers)
         var flags: CGEventFlags = []
-        for modifier in modifiers {
-            flags.insert(mapModifierFlags(modifier))
-        }
+        for modifier in effectiveMods { flags.insert(mapModifierFlags(modifier)) }
 
         // Send key up event
         guard let event = CGEvent(keyboardEventSource: nil, virtualKey: cgKeyCode, keyDown: false) else {
@@ -113,6 +110,21 @@ public class CGEventKeyboard: KeyboardOutput {
             try? releaseKey(keyCode, modifiers: [])
         }
         pressedKeys.removeAll()
+        activeModifiers.removeAll()
+    }
+
+    // MARK: Modifier standalone handling
+    public func pressModifier(_ modifier: VirtualKeyboard.ModifierKey) throws {
+        activeModifiers.insert(modifier)
+    }
+
+    public func releaseModifier(_ modifier: VirtualKeyboard.ModifierKey) throws {
+        activeModifiers.remove(modifier)
+    }
+
+    private func combinedModifiers(transient: [VirtualKeyboard.ModifierKey]) -> [VirtualKeyboard.ModifierKey] {
+        if transient.isEmpty { return Array(activeModifiers) }
+        return Array(activeModifiers.union(transient))
     }
 
     // MARK: - Key Code Mapping

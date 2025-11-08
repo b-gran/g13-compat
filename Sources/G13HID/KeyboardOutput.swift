@@ -17,6 +17,12 @@ public protocol KeyboardOutput {
 
     /// Release all currently pressed keys
     func releaseAllKeys() throws
+
+    /// Press (hold) a logical modifier key independent of a normal key.
+    func pressModifier(_ modifier: VirtualKeyboard.ModifierKey) throws
+
+    /// Release a previously held logical modifier key.
+    func releaseModifier(_ modifier: VirtualKeyboard.ModifierKey) throws
 }
 
 // Extension to provide convenience methods with default parameters
@@ -31,6 +37,13 @@ extension KeyboardOutput {
 
     public func tapKey(_ keyCode: VirtualKeyboard.KeyCode, completion: (() -> Void)? = nil) throws {
         try tapKey(keyCode, modifiers: [], completion: completion)
+    }
+
+    public func pressModifier(_ modifier: VirtualKeyboard.ModifierKey) throws {
+        // Default no-op for implementations that do not differentiate.
+    }
+    public func releaseModifier(_ modifier: VirtualKeyboard.ModifierKey) throws {
+        // Default no-op.
     }
 }
 

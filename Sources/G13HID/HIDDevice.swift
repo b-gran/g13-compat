@@ -95,6 +95,12 @@ public class HIDDevice {
             let mapper = KeyMapper(keyboard: keyboard, macroEngine: macro, config: loaded)
             self.keyMapper = mapper
 
+            // Provide live modifiers from executor to macro engine
+            macro.modifierSupplier = { [weak self] in
+                guard let mapper = self?.keyMapper else { return [] }
+                return mapper.currentActiveModifierKeys()
+            }
+
             let joystick = JoystickController(keyboard: keyboard)
             joystick.configure(from: loaded.joystick)
             self.joystickController = joystick

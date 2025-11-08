@@ -85,6 +85,8 @@ public class MacroEngine {
     private var executionQueue = DispatchQueue(label: "com.g13compat.macroengine", qos: .userInitiated)
     private var isExecuting = false // Reserved for future use (sequential execution semantics)
     private var asyncCancellationDetected = false // Set if token cancelled during async scheduling
+    /// Optional supplier for currently active modifiers to apply to key actions.
+    public var modifierSupplier: (() -> [VirtualKeyboard.ModifierKey])? = nil
 
     public init(keyboard: KeyboardOutput) {
         self.keyboard = keyboard
@@ -162,13 +164,16 @@ public class MacroEngine {
         switch action {
         case .keyPress(let keyString):
             guard let keyCode = VirtualKeyboard.keyCodeFromString(keyString) else { throw MacroError.invalidKey(keyString) }
-            try keyboard.pressKey(keyCode)
+            let mods = modifierSupplier?() ?? []
+            try keyboard.pressKey(keyCode, modifiers: mods)
         case .keyRelease(let keyString):
             guard let keyCode = VirtualKeyboard.keyCodeFromString(keyString) else { throw MacroError.invalidKey(keyString) }
-            try keyboard.releaseKey(keyCode)
+            let mods = modifierSupplier?() ?? []
+            try keyboard.releaseKey(keyCode, modifiers: mods)
         case .keyTap(let keyString):
             guard let keyCode = VirtualKeyboard.keyCodeFromString(keyString) else { throw MacroError.invalidKey(keyString) }
-            try keyboard.tapKey(keyCode) // async release handled by keyboard implementation
+            let mods = modifierSupplier?() ?? []
+            try keyboard.tapKey(keyCode, modifiers: mods, completion: nil) // async release handled
         case .delay(let milliseconds):
             scheduleDelay(milliseconds, token: token, group: group)
         case .text(let text):
@@ -219,7 +224,8 @@ public class MacroEngine {
             let char = characters[index]
             index += 1
             if let keyCode = VirtualKeyboard.keyCodeFromString(String(char)) {
-                try? keyboard.tapKey(keyCode)
+                let mods = modifierSupplier?() ?? []
+                try? keyboard.tapKey(keyCode, modifiers: mods, completion: nil)
             }
             // schedule next character after small delay (10ms)
             DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + .milliseconds(10)) {

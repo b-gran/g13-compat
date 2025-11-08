@@ -7,6 +7,7 @@ public class KeyMapper {
     private let executor: KeyboardActionExecutor
     private var config: G13Config
     private var pressedGKeys: Set<Int> = []
+    private var pressedModifiers: Set<ModifierKind> = []
 
     // G13 HID constants
     private let buttonUsagePage: UInt32 = 0x09  // Button usage page
@@ -56,6 +57,14 @@ public class KeyMapper {
         } else if !pressed && pressedGKeys.contains(gKeyNumber) {
             // Key release
             pressedGKeys.remove(gKeyNumber)
+            // If this G key mapped to a modifier, release the modifier
+            if let keyConfig = config.gKeys.first(where: { $0.keyNumber == gKeyNumber }) {
+                if case .modifier(let kind) = keyConfig.action, pressedModifiers.contains(kind) {
+                    pressedModifiers.remove(kind)
+                    executor.modifierUp(kind)
+                    log("🔓 Modifier UP (\(kind.displayName)) via G\(gKeyNumber)")
+                }
+            }
         }
     }
 
@@ -71,6 +80,13 @@ public class KeyMapper {
         case .macro(let macroName): action = .macro(macroName)
         case .keyTap(let keyString): action = .keyTap(keyString)
         case .disabled: action = nil
+        case .modifier(let kind):
+            if !pressedModifiers.contains(kind) {
+                pressedModifiers.insert(kind)
+                executor.modifierDown(kind)
+                log("🔒 Modifier DOWN (\(kind.displayName)) via G\(gKeyNumber)")
+            }
+            return
         }
         guard let actionToRun = action else { return }
         log("➡️  Emitting action for G\(gKeyNumber): \(actionToRun)")
@@ -90,5 +106,12 @@ public class KeyMapper {
     /// Release all currently pressed G keys
     public func releaseAllGKeys() {
         pressedGKeys.removeAll()
+        for kind in pressedModifiers { executor.modifierUp(kind) }
+        pressedModifiers.removeAll()
+    }
+
+    /// Expose currently active modifier VirtualKeyboard.ModifierKeys through executor (for macro engine usage).
+    public func currentActiveModifierKeys() -> [VirtualKeyboard.ModifierKey] {
+        return executor.currentModifiers()
     }
 }
