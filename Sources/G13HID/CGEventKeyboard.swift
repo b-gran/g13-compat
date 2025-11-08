@@ -116,10 +116,14 @@ public class CGEventKeyboard: KeyboardOutput {
     // MARK: Modifier standalone handling
     public func pressModifier(_ modifier: VirtualKeyboard.ModifierKey) throws {
         activeModifiers.insert(modifier)
+        // Emit a standalone keyDown event for the physical modifier to reflect held state to the system.
+        try postModifierEvent(modifier: modifier, keyDown: true)
     }
 
     public func releaseModifier(_ modifier: VirtualKeyboard.ModifierKey) throws {
         activeModifiers.remove(modifier)
+        // Emit a standalone keyUp event for the physical modifier.
+        try postModifierEvent(modifier: modifier, keyDown: false)
     }
 
     private func combinedModifiers(transient: [VirtualKeyboard.ModifierKey]) -> [VirtualKeyboard.ModifierKey] {
@@ -233,6 +237,38 @@ public class CGEventKeyboard: KeyboardOutput {
         case .leftCommand, .rightCommand:
             return .maskCommand
         }
+    }
+
+    /// Map modifier to a representative CGKeyCode (left side variants preferred).
+    /// Using actual key codes ensures applications registering separate modifier down/up without an accompanying non-modifier key will observe state transitions.
+    private func mapModifierToCGKeyCode(_ modifier: VirtualKeyboard.ModifierKey) -> CGKeyCode? {
+        switch modifier {
+        case .leftShift, .rightShift:
+            return 0x38 // Shift (left)
+        case .leftControl, .rightControl:
+            return 0x3B // Control (left)
+        case .leftAlt, .rightAlt:
+            return 0x3A // Option (left)
+        case .leftCommand, .rightCommand:
+            return 0x37 // Command (left)
+        }
+    }
+
+    /// Post a standalone modifier event (keyDown/keyUp) so the system updates modifier state.
+    private func postModifierEvent(modifier: VirtualKeyboard.ModifierKey, keyDown: Bool) throws {
+        guard AXIsProcessTrusted() else {
+            throw KeyboardError.accessibilityDenied
+        }
+        guard let cgKeyCode = mapModifierToCGKeyCode(modifier) else { return }
+        guard let event = CGEvent(keyboardEventSource: nil, virtualKey: cgKeyCode, keyDown: keyDown) else {
+            throw KeyboardError.eventCreationFailed
+        }
+        // Ensure flags reflect all currently active modifiers (including this one if keyDown).
+        var flags: CGEventFlags = []
+        for m in activeModifiers { flags.insert(mapModifierFlags(m)) }
+        event.flags = flags
+        event.post(tap: .cghidEventTap)
+        log("🔑 Posted modifier \(keyDown ? "DOWN" : "UP") event for \(modifier) CGKeyCode=0x\(String(format: "%02X", cgKeyCode)) activeFlags=\(flags)")
     }
 
     // MARK: - Error Types
