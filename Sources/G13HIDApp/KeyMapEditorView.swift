@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import G13HID
 
 /// Visual editor representing the physical G13 key layout and allowing mapping edits.
@@ -10,6 +11,7 @@ struct KeyMapEditorView: View {
     @State private var capturedKey: String = ""
     @State private var showMacroList: Bool = false
     @State private var eventMonitor: Any? = nil // NSEvent local monitor
+    @Environment(\.dismiss) private var dismiss // sheet dismissal
 
     // Ortholinear 7-column layout centered on middle (column index 3, zero-based).
     // Shorter rows are padded with nil placeholders to center keys.
@@ -56,7 +58,14 @@ struct KeyMapEditorView: View {
             Text("G13 Keymap Editor")
                 .font(.title2)
             Spacer()
-            Button("Done") { selectedGKey = nil; captureMode = false }
+            Button("Done") {
+                // Clear transient state then dismiss hosting sheet
+                selectedGKey = nil
+                captureMode = false
+                showMacroList = false
+                capturedKey = ""
+                dismiss()
+            }
         }
         .padding(.bottom, 4)
     }
@@ -227,6 +236,14 @@ struct KeyMapEditorView: View {
         }
         .onAppear { startCaptureListenerIfNeeded() }
         .onDisappear { stopCaptureListener() }
+        // Ensure capture starts if user toggles "Map Key" after overlay already appeared.
+        .onChange(of: captureMode) { newValue in
+            if newValue {
+                startCaptureListenerIfNeeded()
+            } else {
+                stopCaptureListener()
+            }
+        }
     }
 
     // MARK: Key capture using NSEvent local monitor
@@ -236,6 +253,8 @@ struct KeyMapEditorView: View {
             eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { event in
                 if captureMode {
                     capturedKey = normalizeKey(event)
+                    // Debug instrumentation so user can see capture events in console.
+                    print("[KeyMapEditor] Captured keyCode=\(event.keyCode) mapped=\(capturedKey)")
                     return nil // swallow captured key presses
                 }
                 return event
@@ -263,7 +282,18 @@ struct KeyMapEditorView: View {
             53: "escape", // esc
             48: "tab",
             122: "f1", 120: "f2", 99: "f3", 118: "f4", 96: "f5", 97: "f6", 98: "f7", 100: "f8", 101: "f9", 109: "f10", 103: "f11", 111: "f12",
-            49: "space"
+            49: "space",
+            36: "return",
+            51: "delete",
+            117: "forwarddelete",
+            123: "left",
+            124: "right",
+            125: "down",
+            126: "up",
+            115: "home",
+            119: "end",
+            116: "pageup",
+            121: "pagedown"
         ]
         return mapping[keyCode]
     }
