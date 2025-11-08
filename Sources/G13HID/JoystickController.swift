@@ -198,9 +198,22 @@ public class JoystickController {
     private func apply(primary: VirtualKeyboard.KeyCode?, secondary: VirtualKeyboard.KeyCode?, ratio: Double) {
         // Primary key changes
         if currentPrimary != primary {
+            // Capture the existing secondary before we mutate anything so we can detect promotion.
+            let previousSecondary = currentSecondary
+            // Release the previous primary (if any).
             releasePrimary()
-            if let pk = primary { try? keyboard.pressKey(pk) }
+            // Assign new primary early so downstream logic (stopSecondaryCycle) knows not to release it if it was the secondary.
             currentPrimary = primary
+            if let pk = primary {
+                // If the new primary was already held as the secondary we should NOT issue a new press.
+                // This avoids a redundant press event and matches expected behaviour in hold mode where
+                // the secondary is smoothly promoted without flicker. (See testPrimaryKeyRemainsPressedAfterDrop)
+                if pk != previousSecondary {
+                    try? keyboard.pressKey(pk)
+                } else {
+                    // Transfer ownership of the existing secondary press to primary without emitting a duplicate press.
+                }
+            }
         }
 
         // Secondary key or ratio changes
