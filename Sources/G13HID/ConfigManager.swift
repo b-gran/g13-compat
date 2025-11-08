@@ -63,36 +63,103 @@ public enum GKeyAction: Codable {
 
 /// Joystick configuration
 public struct JoystickConfig: Codable {
+    /// Nested events configuration describing behavior mode
+    public enum EventsMode: Codable {
+        case dutyCycle(frequency: Double, ratio: Double, maxEventsPerSecond: Int?)
+        case hold(diagonalAnglePercent: Double, holdEnabled: Bool)
+
+        private enum CodingKeys: String, CodingKey { case dutyCycleFrequency, dutyCycleRatio, maxEventsPerSecond, hold, diagonalAnglePercent }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+
+            // Distinguish by presence of keys
+            if container.contains(.hold) || container.contains(.diagonalAnglePercent) {
+                let holdFlag = try container.decodeIfPresent(Bool.self, forKey: .hold) ?? true
+                let diagonal = try container.decodeIfPresent(Double.self, forKey: .diagonalAnglePercent) ?? 0.15
+                self = .hold(diagonalAnglePercent: diagonal, holdEnabled: holdFlag)
+                return
+            }
+            // Duty cycle path
+            let freq = try container.decodeIfPresent(Double.self, forKey: .dutyCycleFrequency) ?? 60.0
+            let ratio = try container.decodeIfPresent(Double.self, forKey: .dutyCycleRatio) ?? 0.5
+            let maxEvents = try container.decodeIfPresent(Int.self, forKey: .maxEventsPerSecond)
+            self = .dutyCycle(frequency: freq, ratio: ratio, maxEventsPerSecond: maxEvents)
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            switch self {
+            case .dutyCycle(let frequency, let ratio, let maxEvents):
+                try container.encode(frequency, forKey: .dutyCycleFrequency)
+                try container.encode(ratio, forKey: .dutyCycleRatio)
+                if let m = maxEvents { try container.encode(m, forKey: .maxEventsPerSecond) }
+            case .hold(let diagonalAnglePercent, let holdEnabled):
+                try container.encode(holdEnabled, forKey: .hold)
+                try container.encode(diagonalAnglePercent, forKey: .diagonalAnglePercent)
+            }
+        }
+    }
+
     public var enabled: Bool
     public var deadzone: Double
-    public var dutyCycleFrequency: Double
-    public var dutyCycleRatio: Double
+    public var events: EventsMode
     public var upKey: String
     public var downKey: String
     public var leftKey: String
     public var rightKey: String
-    public var maxEventsPerSecond: Int? // Optional cap on key press/release events (secondary duty cycle throttle)
 
     public init(
         enabled: Bool = true,
         deadzone: Double = 0.15,
-        dutyCycleFrequency: Double = 60.0,
-        dutyCycleRatio: Double = 0.5,
+        events: EventsMode = .dutyCycle(frequency: 60.0, ratio: 0.5, maxEventsPerSecond: nil),
         upKey: String = "w",
         downKey: String = "s",
         leftKey: String = "a",
-        rightKey: String = "d",
-        maxEventsPerSecond: Int? = nil
+        rightKey: String = "d"
     ) {
         self.enabled = enabled
         self.deadzone = deadzone
-        self.dutyCycleFrequency = dutyCycleFrequency
-        self.dutyCycleRatio = dutyCycleRatio
+        self.events = events
         self.upKey = upKey
         self.downKey = downKey
         self.leftKey = leftKey
         self.rightKey = rightKey
-        self.maxEventsPerSecond = maxEventsPerSecond
+    }
+
+    // Backward compatibility: decode legacy flat fields if present
+    private enum CodingKeys: String, CodingKey { case enabled, deadzone, dutyCycleFrequency, dutyCycleRatio, upKey, downKey, leftKey, rightKey, maxEventsPerSecond, events }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        self.deadzone = try container.decodeIfPresent(Double.self, forKey: .deadzone) ?? 0.15
+        self.upKey = try container.decodeIfPresent(String.self, forKey: .upKey) ?? "w"
+        self.downKey = try container.decodeIfPresent(String.self, forKey: .downKey) ?? "s"
+        self.leftKey = try container.decodeIfPresent(String.self, forKey: .leftKey) ?? "a"
+        self.rightKey = try container.decodeIfPresent(String.self, forKey: .rightKey) ?? "d"
+
+        // Prefer nested events object if present
+        if container.contains(.events) {
+            self.events = try container.decode(EventsMode.self, forKey: .events)
+        } else {
+            // Legacy flat fields
+            let freq = try container.decodeIfPresent(Double.self, forKey: .dutyCycleFrequency) ?? 60.0
+            let ratio = try container.decodeIfPresent(Double.self, forKey: .dutyCycleRatio) ?? 0.5
+            let maxEvents = try container.decodeIfPresent(Int.self, forKey: .maxEventsPerSecond)
+            self.events = .dutyCycle(frequency: freq, ratio: ratio, maxEventsPerSecond: maxEvents)
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(enabled, forKey: .enabled)
+        try container.encode(deadzone, forKey: .deadzone)
+        try container.encode(upKey, forKey: .upKey)
+        try container.encode(downKey, forKey: .downKey)
+        try container.encode(leftKey, forKey: .leftKey)
+        try container.encode(rightKey, forKey: .rightKey)
+        try container.encode(events, forKey: .events)
     }
 }
 

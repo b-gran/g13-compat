@@ -323,8 +323,11 @@
   "joystick": {
     "enabled": true,
     "deadzone": 0.15,
-    "dutyCycleFrequency": 60.0,
-    "maxEventsPerSecond": 5,
+    "events": {
+      "dutyCycleFrequency": 60.0,
+      "dutyCycleRatio": 0.5,
+      "maxEventsPerSecond": 5
+    },
     "upKey": "w",
     "downKey": "s",
     "leftKey": "a",

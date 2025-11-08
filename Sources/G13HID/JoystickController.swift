@@ -6,8 +6,13 @@ public class JoystickController {
 
     // Public configuration
     public var deadzone: Double = 0.15            // Threshold magnitude below which no output
-    public var dutyCycleFrequency: Double = 60.0  // Base cycles per second
-    public var maxEventsPerSecond: Int? = nil      // Optional cap limiting press/release transitions for secondary key
+    public var dutyCycleFrequency: Double = 60.0  // Base cycles per second (for duty cycle mode)
+    public var maxEventsPerSecond: Int? = nil      // Optional cap limiting press/release transitions for secondary key (duty cycle mode)
+    public enum Mode {
+        case dutyCycle(ratioProvider: (Double) -> Double) // ratio based on angular offset function returns 0..1
+        case hold(diagonalAnglePercent: Double) // dual-key hold with progressive travel from initial anchor
+    }
+    public var mode: Mode = .dutyCycle(ratioProvider: { $0 / 45.0 }) // default (ratio = offset/45)
 
     // Internal state exposed for tests via @testable import
     var primaryKey: VirtualKeyboard.KeyCode? { currentPrimary }
@@ -23,8 +28,34 @@ public class JoystickController {
     private var secondaryTimer: Timer?
     private var secondaryPhaseIsOn: Bool = false
 
+    // Hold mode state
+    private var holdInitialAnchorKey: VirtualKeyboard.KeyCode? = nil
+    private var holdInitialAnchorAngle: Double? = nil // cardinal angle (0,90,180,270)
+    private var holdDirectionClockwise: Bool = true // direction of travel from initial anchor
+    private var holdDroppedPrimary: Bool = false
+
     public init(keyboard: KeyboardOutput) {
         self.keyboard = keyboard
+    }
+
+    /// Apply joystick events configuration (parsed from JoystickConfig)
+    public func configure(from config: JoystickConfig) {
+        self.deadzone = config.deadzone
+        switch config.events {
+        case .dutyCycle(let frequency, let ratio, let maxEvents):
+            self.dutyCycleFrequency = frequency
+            self.maxEventsPerSecond = maxEvents
+            // ratio parameter from config represents maximum ratio at 45°, we scale actual offset proportionally
+            self.mode = .dutyCycle(ratioProvider: { offsetDeg in
+                let clamped = min(offsetDeg, 45.0)
+                let base = clamped / 45.0
+                return base * ratio // allow tuning vs default 1.0
+            })
+        case .hold(let diagonalAnglePercent, _):
+            // In hold mode we ignore dutyCycleFrequency/maxEvents
+            self.maxEventsPerSecond = nil
+            self.mode = .hold(diagonalAnglePercent: diagonalAnglePercent)
+        }
     }
 
     /// Update joystick position (normalized -1.0 to 1.0)
@@ -34,6 +65,7 @@ public class JoystickController {
             // Centered: release everything
             releasePrimary()
             stopSecondaryCycle()
+            resetHoldState()
             return
         }
 
@@ -62,20 +94,59 @@ public class JoystickController {
         }
         let primary = best.key
         let diffAbs = abs(bestDiff)
-        let clamped = min(diffAbs, 45.0)
-        let ratio = clamped / 45.0 // 0 at anchor, 1 at diagonal
-        if ratio == 0 { return (primary, nil, 0) }
+        switch mode {
+        case .dutyCycle(let ratioProvider):
+            let ratio = ratioProvider(diffAbs)
+            if ratio <= 0.0001 { return (primary, nil, 0) }
+            // Determine secondary based on direction of deviation from anchor
+            let secondary: VirtualKeyboard.KeyCode
+            switch best.key {
+            case .w: secondary = bestDiff > 0 ? .a : .d
+            case .d: secondary = bestDiff > 0 ? .w : .s
+            case .a: secondary = bestDiff > 0 ? .s : .w
+            case .s: secondary = bestDiff > 0 ? .d : .a
+            default: secondary = .w
+            }
+            return (primary, secondary, ratio)
+        case .hold(let diagonalAnglePercent):
+            // Travel thresholds relative to initial anchor's 90° span toward adjacent cardinal.
+            let thresholdAdd = diagonalAnglePercent * 90.0
+            let thresholdDrop = (1.0 - diagonalAnglePercent) * 90.0
 
-        // Determine secondary based on direction of deviation from anchor
-        let secondary: VirtualKeyboard.KeyCode
-        switch best.key {
-        case .w: secondary = bestDiff > 0 ? .a : .d   // Up -> toward + diff (clockwise) is left (NW), negative diff is right (NE)
-        case .d: secondary = bestDiff > 0 ? .w : .s   // Right -> toward NE (positive) up, toward SE (negative) down
-        case .a: secondary = bestDiff > 0 ? .s : .w   // Left -> toward SW (positive) down, toward NW (negative) up
-        case .s: secondary = bestDiff > 0 ? .d : .a   // Down -> toward SE (positive) right, toward SW (negative) left
-        default: secondary = .w // Fallback should never occur
+            // If no hold session active, evaluate possibility to start one using current nearest anchor.
+            if holdInitialAnchorKey == nil || holdInitialAnchorAngle == nil {
+                if diffAbs < thresholdAdd { // Not far enough: single primary
+                    return (primary, nil, 0)
+                }
+                // Start hold session.
+                holdInitialAnchorKey = primary
+                holdInitialAnchorAngle = best.deg
+                holdDirectionClockwise = bestDiff > 0 // sign of deviation from anchor determines direction of travel
+                holdDroppedPrimary = false
+            }
+
+            // Compute progress from initial anchor along chosen direction even if nearest anchor changed.
+            guard let initialAngle = holdInitialAnchorAngle, let initialKey = holdInitialAnchorKey else {
+                return (primary, nil, 0)
+            }
+            let progress = angularProgress(from: initialAngle, to: angle, clockwise: holdDirectionClockwise)
+            // If user reversed direction substantially (progress decreases below add threshold), reset state.
+            if progress < thresholdAdd * 0.5 { // hysteresis factor to avoid flicker
+                resetHoldState()
+                return (primary, nil, 0)
+            }
+            // Determine secondary (target cardinal) based on initial key + direction
+            let secondaryTarget = adjacentCardinal(from: initialKey, clockwise: holdDirectionClockwise)
+
+            if progress >= thresholdDrop {
+                // Drop initial primary; keep only target.
+                holdDroppedPrimary = true
+                return (secondaryTarget, nil, 0)
+            }
+            // Both keys held.
+            // If nearest anchor switched to the secondary before drop threshold, retain original primary until drop threshold.
+            return (initialKey, secondaryTarget, 1.0)
         }
-        return (primary, secondary, ratio)
     }
 
     private func apply(primary: VirtualKeyboard.KeyCode?, secondary: VirtualKeyboard.KeyCode?, ratio: Double) {
@@ -94,7 +165,9 @@ public class JoystickController {
             currentSecondary = secondary
             currentSecondaryRatio = ratio
             if let sk = secondary {
-                if ratio >= 0.999 { // Hold continuously
+                if case .hold = mode { // In hold mode we simply press secondary continuously
+                    try? keyboard.pressKey(sk)
+                } else if ratio >= 0.999 { // Hold continuously
                     try? keyboard.pressKey(sk)
                 } else if ratio <= 0.0001 { // No secondary
                     // nothing
@@ -193,6 +266,7 @@ public class JoystickController {
     public func stop() {
         releasePrimary()
         stopSecondaryCycle()
+        resetHoldState()
     }
 
     deinit { stop() }
@@ -224,4 +298,33 @@ private func angularDifference(_ angle: Double, _ anchor: Double) -> Double {
     while diff < -180 { diff += 360 }
     while diff > 180 { diff -= 360 }
     return diff
+}
+
+// Returns positive progress (0..90) representing travel from startAngle toward direction (clockwise or counter-clockwise) limited to 90.
+private func angularProgress(from startAngle: Double, to currentAngle: Double, clockwise: Bool) -> Double {
+    var raw = currentAngle - startAngle
+    while raw < -180 { raw += 360 }
+    while raw > 180 { raw -= 360 }
+    let signed = clockwise ? raw : -raw
+    let clamped = max(0.0, min(90.0, signed))
+    return clamped
+}
+
+// Adjacent cardinal in travel direction.
+private func adjacentCardinal(from key: VirtualKeyboard.KeyCode, clockwise: Bool) -> VirtualKeyboard.KeyCode {
+    switch key {
+    case .d: return clockwise ? .w : .s
+    case .w: return clockwise ? .a : .d
+    case .a: return clockwise ? .s : .w
+    case .s: return clockwise ? .d : .a
+    default: return .w
+    }
+}
+
+private extension JoystickController {
+    func resetHoldState() {
+        holdInitialAnchorKey = nil
+        holdInitialAnchorAngle = nil
+        holdDroppedPrimary = false
+    }
 }

@@ -96,9 +96,7 @@ public class HIDDevice {
             self.keyMapper = mapper
 
             let joystick = JoystickController(keyboard: keyboard)
-            joystick.deadzone = loaded.joystick.deadzone
-            joystick.dutyCycleFrequency = loaded.joystick.dutyCycleFrequency
-            joystick.maxEventsPerSecond = loaded.joystick.maxEventsPerSecond
+            joystick.configure(from: loaded.joystick)
             self.joystickController = joystick
 
             log("Keyboard output initialized successfully")
@@ -351,9 +349,7 @@ public class HIDDevice {
 
         // Update joystick controller settings
         if let joystick = joystickController {
-            joystick.deadzone = newConfig.joystick.deadzone
-            joystick.dutyCycleFrequency = newConfig.joystick.dutyCycleFrequency
-            joystick.maxEventsPerSecond = newConfig.joystick.maxEventsPerSecond
+            joystick.configure(from: newConfig.joystick)
         }
     }
 

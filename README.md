@@ -90,11 +90,15 @@ Example JSON macro:
 Switch via config `keyboardOutputMode`. Fallback logic attempts HID then falls back to CGEvent.
 
 ### 6. Joystick Handling
-`JoystickController` reads analog axes, applies configurable deadzone (`deadzone`) and duty-cycle gating (`dutyCycleFrequency`) to reduce event spam. Emits mapped WASD-style keys based on angular resolution (primary + optional secondary). Disable via `"enabled": false` in joystick config.
+`JoystickController` reads analog axes, applies configurable deadzone (`deadzone`), and emits mapped WASD-style keys. Behavior is selected via a nested `events` object in the joystick config. Disable via `"enabled": false`.
+
+Events modes:
+1. Duty-cycle mode (default): Adjacent secondary key is duty-cycled based on angular offset from nearest cardinal.
+2. Hold mode: Keys are simply held; a secondary key is added once the angle passes a threshold and eventually replaces the primary near the diagonal.
 
 Fallback axis extraction: On macOS versions where the G13 does not expose separate Generic Desktop X/Y elements, only a 7-byte vendor report (usagePage `0xFF00`) is received. In this case the first two bytes are heuristically treated as X/Y (center ≈ `0x80`) and normalized to the range -1.0..1.0. This enables joystick key emission even without dedicated axis elements. Debug logs prefixed with `VendorJoystick:` show raw and normalized values.
 
-New angular duty-cycle algorithm:
+Duty-cycle algorithm (events.dutyCycle* fields):
 The joystick now treats the nearest cardinal direction (Right=D, Up=W, Left=A, Down=S) as the primary key which is held continuously while outside the deadzone. A secondary key (adjacent clockwise or counter-clockwise) is duty-cycled based on angular offset from the primary anchor.
 
 Definitions:
@@ -116,19 +120,46 @@ Timing: The secondary ON and OFF phases subdivide the base period (1 / `dutyCycl
 Event throttling (`maxEventsPerSecond`):
 Set an optional cap to reduce total key press/release transitions while preserving the perceived duty-cycle ratio. The controller scales the effective period so that transitions per second do not exceed the cap. Roughly, each full secondary cycle (press+release) counts as 2 events. Example: with `dutyCycleFrequency = 60` and `ratio = 0.5`, naive transitions could be high; if `maxEventsPerSecond = 5`, the period is stretched so cycles per second ≈ `cap / 2` while keeping ON:OFF proportion. Omit or set `null` to disable throttling. Primary key remains continuously held and is not throttled.
 
-Example joystick config snippet:
+Config examples:
+
+Duty-cycle:
 ```json
 "joystick": {
     "enabled": true,
     "deadzone": 0.15,
-    "dutyCycleFrequency": 60.0,
-    "maxEventsPerSecond": 5,
+    "events": {
+        "dutyCycleFrequency": 60.0,
+        "dutyCycleRatio": 0.5,
+        "maxEventsPerSecond": 5
+    },
     "upKey": "w",
     "downKey": "s",
     "leftKey": "a",
     "rightKey": "d"
 }
 ```
+
+Hold mode (no duty cycle timers):
+```json
+"joystick": {
+    "enabled": true,
+    "deadzone": 0.15,
+    "events": {
+        "hold": true,
+        "diagonalAnglePercent": 0.15
+    },
+    "upKey": "w",
+    "downKey": "s",
+    "leftKey": "a",
+    "rightKey": "d"
+}
+```
+
+Hold mode semantics:
+- `diagonalAnglePercent` is a fraction (0–1) of the 90° span between cardinals.
+- Secondary key engages at `addThreshold = diagonalAnglePercent * 90°` of angular drift from the nearest cardinal.
+- Primary key releases at `dropThreshold = (1 - diagonalAnglePercent) * 90°` (secondary then becomes the sole primary).
+- At most two keys are ever held simultaneously.
 
 ### 7. Logging & Environment Variables
 Log file: `~/g13-debug.log`

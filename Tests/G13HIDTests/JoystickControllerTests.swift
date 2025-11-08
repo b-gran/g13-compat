@@ -47,12 +47,13 @@ final class JoystickControllerTests: XCTestCase {
             throw XCTSkip("Controller not available")
         }
 
-        // Test setting duty cycle parameters
-        ctrl.dutyCycleFrequency = 30.0
-        XCTAssertEqual(ctrl.dutyCycleFrequency, 30.0)
-        // Ratio now derived dynamically; simulate mid angle for ~0.5 secondary ratio
-        ctrl.updateJoystick(x: cos(112.5 * .pi / 180.0), y: sin(112.5 * .pi / 180.0))
-        XCTAssertEqual(ctrl.secondaryRatio, 0.5, accuracy: 0.05)
+    // Test setting duty cycle parameters via configure
+    let cfg = JoystickConfig(events: .dutyCycle(frequency: 30.0, ratio: 1.0, maxEventsPerSecond: nil))
+    ctrl.configure(from: cfg)
+    XCTAssertEqual(ctrl.dutyCycleFrequency, 30.0)
+    // Simulate mid angle (22.5° offset) expecting ratio ~0.5 (base ratioProvider offset/45)
+    ctrl.updateJoystick(x: cos(112.5 * .pi / 180.0), y: sin(112.5 * .pi / 180.0))
+    XCTAssertEqual(ctrl.secondaryRatio, 0.5, accuracy: 0.05)
     }
 
     func testJoystickCentered() throws {

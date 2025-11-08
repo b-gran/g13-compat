@@ -32,8 +32,11 @@ final class ConfigManagerTests: XCTestCase {
         // Check joystick defaults
         XCTAssertTrue(config.joystick.enabled)
         XCTAssertEqual(config.joystick.deadzone, 0.15)
-        XCTAssertEqual(config.joystick.dutyCycleFrequency, 60.0)
-        XCTAssertEqual(config.joystick.dutyCycleRatio, 0.5)
+        // Default events mode should be duty cycle
+        if case .dutyCycle(let freq, let ratio, _) = config.joystick.events {
+            XCTAssertEqual(freq, 60.0)
+            XCTAssertEqual(ratio, 0.5)
+        } else { XCTFail("Expected dutyCycle events mode") }
         XCTAssertEqual(config.joystick.upKey, "w")
         XCTAssertEqual(config.joystick.downKey, "s")
         XCTAssertEqual(config.joystick.leftKey, "a")
@@ -149,16 +152,18 @@ final class ConfigManagerTests: XCTestCase {
 
         let manager = try ConfigManager(configPath: path)
 
-        var joystick = JoystickConfig()
-        joystick.deadzone = 0.25
-        joystick.dutyCycleFrequency = 30.0
-        joystick.enabled = false
+    var joystick = JoystickConfig()
+    joystick.deadzone = 0.25
+    joystick.enabled = false
+    joystick.events = .dutyCycle(frequency: 30.0, ratio: 0.5, maxEventsPerSecond: nil)
 
         try manager.updateJoystick(joystick)
 
         let config = manager.getConfig()
         XCTAssertEqual(config.joystick.deadzone, 0.25)
-        XCTAssertEqual(config.joystick.dutyCycleFrequency, 30.0)
+        if case .dutyCycle(let freq, _, _) = config.joystick.events {
+            XCTAssertEqual(freq, 30.0)
+        } else { XCTFail("Expected duty cycle mode") }
         XCTAssertFalse(config.joystick.enabled)
     }
 
@@ -282,8 +287,7 @@ final class ConfigManagerTests: XCTestCase {
         let joystick = JoystickConfig(
             enabled: true,
             deadzone: 0.2,
-            dutyCycleFrequency: 50.0,
-            dutyCycleRatio: 0.6,
+            events: .dutyCycle(frequency: 50.0, ratio: 0.6, maxEventsPerSecond: nil),
             upKey: "i",
             downKey: "k",
             leftKey: "j",
@@ -295,8 +299,10 @@ final class ConfigManagerTests: XCTestCase {
 
         XCTAssertEqual(decoded.enabled, true)
         XCTAssertEqual(decoded.deadzone, 0.2)
-        XCTAssertEqual(decoded.dutyCycleFrequency, 50.0)
-        XCTAssertEqual(decoded.dutyCycleRatio, 0.6)
+        if case .dutyCycle(let freq, let ratio, _) = decoded.events {
+            XCTAssertEqual(freq, 50.0)
+            XCTAssertEqual(ratio, 0.6)
+        } else { XCTFail("Expected dutyCycle mode") }
         XCTAssertEqual(decoded.upKey, "i")
         XCTAssertEqual(decoded.downKey, "k")
         XCTAssertEqual(decoded.leftKey, "j")
