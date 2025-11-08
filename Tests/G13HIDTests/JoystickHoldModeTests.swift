@@ -5,12 +5,12 @@ final class JoystickHoldModeTests: XCTestCase {
     func makeController(diagonalPercent: Double) -> (JoystickController, MockKeyboardOutput) {
         let kb = MockKeyboardOutput()
         let ctrl = JoystickController(keyboard: kb)
-        let cfg = JoystickConfig(
-            enabled: true,
-            deadzone: 0.05,
-            events: JoystickConfig.EventsMode.hold(diagonalAnglePercent: diagonalPercent, holdEnabled: true),
-            upKey: "w", downKey: "s", leftKey: "a", rightKey: "d"
-        )
+            let cfg = JoystickConfig(
+                enabled: true,
+                deadzone: 0.05,
+                events: JoystickConfig.EventsMode.hold(diagonalAnglePercent: diagonalPercent, holdEnabled: true, diagonalAssist: nil),
+                upKey: "w", downKey: "s", leftKey: "a", rightKey: "d"
+            )
         ctrl.configure(from: cfg)
         return (ctrl, kb)
     }

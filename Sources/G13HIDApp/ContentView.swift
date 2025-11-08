@@ -103,6 +103,13 @@ class HIDMonitor: ObservableObject, HIDDeviceDelegate {
         }
     }
 
+    // Public joystick config updater
+    func updateJoystickConfig(_ joystick: JoystickConfig) {
+        guard var cfg = config else { return }
+        cfg.joystick = joystick
+        applyConfig(cfg)
+    }
+
     // MARK: - Profile Management
     func activateProfile(index: Int) {
         guard let device = hidDevice else { return }
@@ -126,6 +133,7 @@ struct ContentView: View {
     @StateObject private var monitor = HIDMonitor()
     @StateObject private var joystickSettings = JS()
     @State private var showingKeymapEditor = false
+    @State private var showingJoystickSettings = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -223,6 +231,14 @@ struct ContentView: View {
                         .sheet(isPresented: $showingKeymapEditor) {
                             KeyMapEditorView(monitor: monitor)
                                 .frame(minWidth: 520, minHeight: 600)
+                        }
+                        Button("Joystick Settings") {
+                            showingJoystickSettings = true
+                        }
+                        .buttonStyle(.bordered)
+                        .sheet(isPresented: $showingJoystickSettings) {
+                            JoystickSettingsView(monitor: monitor)
+                                .frame(minWidth: 560, minHeight: 640)
                         }
                     }
                 }

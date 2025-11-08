@@ -9,12 +9,15 @@ public class JoystickController {
     public var dutyCycleFrequency: Double = 60.0  // Base cycles per second (for duty cycle mode)
     public var maxEventsPerSecond: Int? = nil      // Optional cap limiting press/release transitions for secondary key (duty cycle mode)
     public enum Mode {
-    case dutyCycle(ratioProvider: (Double) -> Double, diagonalAssist: JoystickDiagonalAssist?) // ratio based on angular offset function returns 0..1 + optional assist
-        case hold(diagonalAnglePercent: Double) // dual-key hold with progressive travel from initial anchor
+        case dutyCycle(ratioProvider: (Double) -> Double, diagonalAssist: JoystickDiagonalAssist?) // ratio based on angular offset function returns 0..1 + optional assist
+        case hold(diagonalAnglePercent: Double, diagonalAssist: JoystickDiagonalAssist?) // dual-key hold with progressive travel; optional assist accelerates dual-key start
     }
     public var mode: Mode = .dutyCycle(ratioProvider: { $0 / 45.0 }, diagonalAssist: nil) // default (ratio = offset/45)
     // Debug instrumentation (set true during troubleshooting to emit hold-mode state transitions)
     public var debugHoldLogging: Bool = true
+    // Tracks if current hold segment began early via assist (angle or axis threshold) before reaching thresholdAdd.
+    // Prevents immediate hysteresis reset on small initial progress.
+    private var holdAssistEarlyStart: Bool = false
 
     // Internal state exposed for tests via @testable import
     var primaryKey: VirtualKeyboard.KeyCode? { currentPrimary }
@@ -44,7 +47,7 @@ public class JoystickController {
     public func configure(from config: JoystickConfig) {
         self.deadzone = config.deadzone
         switch config.events {
-    case .dutyCycle(let frequency, let ratio, let maxEvents, let assist):
+        case .dutyCycle(let frequency, let ratio, let maxEvents, let assist):
             self.dutyCycleFrequency = frequency
             self.maxEventsPerSecond = maxEvents
             // ratio parameter from config represents maximum ratio at 45°, we scale actual offset proportionally
@@ -53,10 +56,10 @@ public class JoystickController {
                 let base = clamped / 45.0
                 return base * ratio // allow tuning vs default 1.0
             }, diagonalAssist: assist)
-        case .hold(let diagonalAnglePercent, _):
+        case .hold(let diagonalAnglePercent, _, let assist):
             // In hold mode we ignore dutyCycleFrequency/maxEvents
             self.maxEventsPerSecond = nil
-            self.mode = .hold(diagonalAnglePercent: diagonalAnglePercent)
+            self.mode = .hold(diagonalAnglePercent: diagonalAnglePercent, diagonalAssist: assist)
         }
     }
 
@@ -97,7 +100,7 @@ public class JoystickController {
         let primary = best.key
         let diffAbs = abs(bestDiff)
         switch mode {
-    case .dutyCycle(let ratioProvider, let assist):
+        case .dutyCycle(let ratioProvider, let assist):
             let ratio = ratioProvider(diffAbs)
             var effectiveRatio = ratio
             // Diagonal assist: if near neutral jump directly into diagonal (both axes engaged) enforce min ratio.
@@ -125,7 +128,7 @@ public class JoystickController {
             default: secondary = .w
             }
             return (primary, secondary, effectiveRatio)
-        case .hold(let diagonalAnglePercent):
+        case .hold(let diagonalAnglePercent, let assist):
             // Travel thresholds relative to initial anchor's 90° span toward adjacent cardinal.
             let thresholdAdd = diagonalAnglePercent * 90.0
             let thresholdDrop = (1.0 - diagonalAnglePercent) * 90.0
@@ -135,7 +138,22 @@ public class JoystickController {
 
             // If no hold session active, evaluate possibility to start one using current nearest anchor.
             if holdInitialAnchorKey == nil || holdInitialAnchorAngle == nil {
-                if diffAbs < thresholdAdd { // Not far enough: single primary
+                var startDual = diffAbs >= thresholdAdd
+                var assistedStart = false
+                // Assist: if within assist angle window OR strong axis engagement, allow early dual-key start.
+                if !startDual, let a = assist {
+                    if diffAbs >= a.minAngleDegrees && diffAbs <= a.maxAngleDegrees {
+                        startDual = true
+                        assistedStart = true
+                    } else {
+                        let componentThreshold = a.axisThresholdMultiplier * deadzone
+                        if abs(x) >= componentThreshold && abs(y) >= componentThreshold {
+                            startDual = true
+                            assistedStart = true
+                        }
+                    }
+                }
+                if !startDual { // Not far enough: single primary
                     return (primary, nil, 0)
                 }
                 // Start hold session.
@@ -143,6 +161,7 @@ public class JoystickController {
                 holdInitialAnchorAngle = best.deg
                 holdDirectionClockwise = bestDiff > 0 // sign of deviation from anchor determines direction of travel
                 holdDroppedPrimary = false
+                holdAssistEarlyStart = assistedStart && diffAbs < thresholdAdd
                 if debugHoldLogging { logInfo("[HOLD] START segment anchor=\(primary) angle=\(best.deg) clockwise=\(holdDirectionClockwise)") }
             }
 
@@ -152,7 +171,7 @@ public class JoystickController {
             }
             let progress = angularProgress(from: initialAngle, to: angle, clockwise: holdDirectionClockwise)
             // If user reversed direction substantially (progress decreases below add threshold), reset state.
-            if progress < thresholdAdd * 0.5 { // hysteresis factor to avoid flicker
+            if progress < thresholdAdd * 0.5 && !holdAssistEarlyStart { // hysteresis factor to avoid flicker; skip if assisted early start
                 if debugHoldLogging { logInfo("[HOLD] RESET due to reverse progress=\(String(format: "%.2f", progress)) < hysteresis=\(String(format: "%.2f", thresholdAdd * 0.5))") }
                 resetHoldState()
                 return (primary, nil, 0)
@@ -183,6 +202,7 @@ public class JoystickController {
                         holdInitialAnchorKey = nextAnchor
                         holdInitialAnchorAngle = nextAnchorAngle
                         holdDroppedPrimary = false
+                        holdAssistEarlyStart = false
                         // Continue same rotation direction.
                         let newProgress = angularProgress(from: nextAnchorAngle, to: angle, clockwise: holdDirectionClockwise)
                         if debugHoldLogging { logInfo("[HOLD] RE-ANCHOR nextAnchor=\(nextAnchor) angle=\(nextAnchorAngle) newProgress=\(String(format: "%.2f", newProgress)) nextDiff=\(String(format: "%.2f", nextDiff))") }
@@ -206,6 +226,7 @@ public class JoystickController {
             }
             // Both keys held until primary drop threshold is reached regardless of nearest cardinal switching.
             if debugHoldLogging { logInfo("[HOLD] Dual keys \(initialKey)+\(secondaryTarget) progress=\(String(format: "%.2f", progress)) < drop=\(String(format: "%.2f", thresholdDrop))") }
+            // For assist we could consider partial ratio (not implemented; hold mode keeps continuous secondary once started)
             return (initialKey, secondaryTarget, 1.0)
         }
     }

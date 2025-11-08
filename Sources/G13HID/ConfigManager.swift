@@ -101,18 +101,36 @@ public struct JoystickConfig: Codable {
     /// Nested events configuration describing behavior mode
     public enum EventsMode: Codable {
     case dutyCycle(frequency: Double, ratio: Double, maxEventsPerSecond: Int?, diagonalAssist: JoystickDiagonalAssist?)
-        case hold(diagonalAnglePercent: Double, holdEnabled: Bool)
+        case hold(diagonalAnglePercent: Double, holdEnabled: Bool, diagonalAssist: JoystickDiagonalAssist?)
 
-        private enum CodingKeys: String, CodingKey { case dutyCycleFrequency, dutyCycleRatio, maxEventsPerSecond, hold, diagonalAnglePercent, diagonalAssistAxisMultiplier, diagonalAssistMinAngle, diagonalAssistMaxAngle, diagonalAssistMinSecondaryRatio }
+        // Extend coding keys for hold-mode assist; keep existing keys for backward compatibility.
+        private enum CodingKeys: String, CodingKey {
+            case dutyCycleFrequency, dutyCycleRatio, maxEventsPerSecond, hold, diagonalAnglePercent
+            case diagonalAssistAxisMultiplier, diagonalAssistMinAngle, diagonalAssistMaxAngle, diagonalAssistMinSecondaryRatio
+            // Hold mode assist uses same key names (additive only) so legacy configs without them still decode.
+            case holdDiagonalAssistAxisMultiplier, holdDiagonalAssistMinAngle, holdDiagonalAssistMaxAngle, holdDiagonalAssistMinSecondaryRatio
+        }
 
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
 
-            // Distinguish by presence of keys
+            // Distinguish hold vs duty cycle by presence of hold keys
             if container.contains(.hold) || container.contains(.diagonalAnglePercent) {
                 let holdFlag = try container.decodeIfPresent(Bool.self, forKey: .hold) ?? true
                 let diagonal = try container.decodeIfPresent(Double.self, forKey: .diagonalAnglePercent) ?? 0.15
-                self = .hold(diagonalAnglePercent: diagonal, holdEnabled: holdFlag)
+                // Optional assist for hold mode (uses dedicated hold* keys first, falls back to shared if user manually edited file)
+                let axisMul = try container.decodeIfPresent(Double.self, forKey: .holdDiagonalAssistAxisMultiplier) ?? container.decodeIfPresent(Double.self, forKey: .diagonalAssistAxisMultiplier)
+                let minAng = try container.decodeIfPresent(Double.self, forKey: .holdDiagonalAssistMinAngle) ?? container.decodeIfPresent(Double.self, forKey: .diagonalAssistMinAngle)
+                let maxAng = try container.decodeIfPresent(Double.self, forKey: .holdDiagonalAssistMaxAngle) ?? container.decodeIfPresent(Double.self, forKey: .diagonalAssistMaxAngle)
+                let minRatio = try container.decodeIfPresent(Double.self, forKey: .holdDiagonalAssistMinSecondaryRatio) ?? container.decodeIfPresent(Double.self, forKey: .diagonalAssistMinSecondaryRatio)
+                var assist: JoystickDiagonalAssist? = nil
+                if let axisMul = axisMul, let minAng = minAng, let maxAng = maxAng, let minRatio = minRatio {
+                    assist = JoystickDiagonalAssist(axisThresholdMultiplier: axisMul,
+                                                    minAngleDegrees: minAng,
+                                                    maxAngleDegrees: maxAng,
+                                                    minSecondaryRatio: minRatio)
+                }
+                self = .hold(diagonalAnglePercent: diagonal, holdEnabled: holdFlag, diagonalAssist: assist)
                 return
             }
             // Duty cycle path
@@ -127,9 +145,9 @@ public struct JoystickConfig: Codable {
             var assist: JoystickDiagonalAssist? = nil
             if let axisMul = axisMul, let minAng = minAng, let maxAng = maxAng, let minRatio = minRatio {
                 assist = JoystickDiagonalAssist(axisThresholdMultiplier: axisMul,
-                                        minAngleDegrees: minAng,
-                                        maxAngleDegrees: maxAng,
-                                        minSecondaryRatio: minRatio)
+                                                minAngleDegrees: minAng,
+                                                maxAngleDegrees: maxAng,
+                                                minSecondaryRatio: minRatio)
             }
             self = .dutyCycle(frequency: freq, ratio: ratio, maxEventsPerSecond: maxEvents, diagonalAssist: assist)
         }
@@ -147,9 +165,15 @@ public struct JoystickConfig: Codable {
                     try container.encode(a.maxAngleDegrees, forKey: .diagonalAssistMaxAngle)
                     try container.encode(a.minSecondaryRatio, forKey: .diagonalAssistMinSecondaryRatio)
                 }
-            case .hold(let diagonalAnglePercent, let holdEnabled):
+            case .hold(let diagonalAnglePercent, let holdEnabled, let assist):
                 try container.encode(holdEnabled, forKey: .hold)
                 try container.encode(diagonalAnglePercent, forKey: .diagonalAnglePercent)
+                if let a = assist { // write using hold-specific assist keys for clarity
+                    try container.encode(a.axisThresholdMultiplier, forKey: .holdDiagonalAssistAxisMultiplier)
+                    try container.encode(a.minAngleDegrees, forKey: .holdDiagonalAssistMinAngle)
+                    try container.encode(a.maxAngleDegrees, forKey: .holdDiagonalAssistMaxAngle)
+                    try container.encode(a.minSecondaryRatio, forKey: .holdDiagonalAssistMinSecondaryRatio)
+                }
             }
         }
     }

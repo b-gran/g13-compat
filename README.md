@@ -172,6 +172,23 @@ Tuning:
 
 Omit all four keys to preserve legacy behavior.
 
+Hold Mode Assist:
+Hold mode now supports the same assist concept to start dual-key (primary + adjacent) earlier than the configured `diagonalAnglePercent` threshold. Provide the following hold-specific keys inside the `events` object (they are encoded separately to avoid ambiguity and preserve backward compatibility):
+
+```
+"holdDiagonalAssistAxisMultiplier": 0.85,
+"holdDiagonalAssistMinAngle": 8.0,
+"holdDiagonalAssistMaxAngle": 40.0,
+"holdDiagonalAssistMinSecondaryRatio": 0.35
+```
+
+Behavior differences vs duty-cycle assist:
+* In hold mode the assist does NOT alter a time-based ratio (there is no duty cycling); it only accelerates when the secondary key begins being held alongside the primary.
+* Once dual-key hold begins, both keys remain down until the normal drop threshold logic releases the primary.
+* Axis threshold and angle window logic mirror duty-cycle mode (either angle within window OR both components exceed `axisMultiplier * deadzone`).
+
+If omitted, hold mode falls back to pure threshold-based engagement using `diagonalAnglePercent`.
+
 Event throttling (`maxEventsPerSecond`):
 Set an optional cap to reduce total key press/release transitions while preserving the perceived duty-cycle ratio. The controller scales the effective period so that transitions per second do not exceed the cap. Roughly, each full secondary cycle (press+release) counts as 2 events. Example: with `dutyCycleFrequency = 60` and `ratio = 0.5`, naive transitions could be high; if `maxEventsPerSecond = 5`, the period is stretched so cycles per second ≈ `cap / 2` while keeping ON:OFF proportion. Omit or set `null` to disable throttling. Primary key remains continuously held and is not throttled.
 
@@ -221,6 +238,21 @@ Continuous rotation (hold mode) re-anchor behavior:
 - This "segment chaining" prevents stalls that could otherwise occur after completing a quadrant. Without re-anchoring, long circular motions could end up with no primary key held while progress remained capped at the end of the old segment.
 - Re-anchor triggers when: (a) the previous primary has been released and angular progress is near or beyond the end of its 90° span, or (b) the nearest cardinal to the current angle equals the secondary key (meaning we have effectively transitioned to the next quadrant).
 - Effect: Continuous circular motion (multiple full rotations) keeps emitting appropriate key holds and transitions with no prolonged gaps; verified by `JoystickContinuousRotationTests`.
+
+### Joystick Settings UI (SwiftUI App)
+Open the GUI via `swift run G13HIDApp` and press the "Joystick Settings" button to configure:
+
+Sections:
+1. General – enable flag, deadzone slider (0–0.50), WASD override fields.
+2. Mode – segmented control switching between Duty Cycle and Hold.
+3. Duty Cycle – frequency (10–240 Hz), secondary ratio (0.05–1.0), optional max events/sec throttle.
+4. Neutral → Diagonal Assist – toggle & sliders for axis threshold multiplier, min/max angle degrees, and minimum secondary ratio.
+5. Hold Mode – enable flag and diagonal angle percent (0.05–0.40) controlling add/drop thresholds.
+
+Workflow: Edits are staged locally until you press Save. Revert discards unsaved changes. Closing the sheet with unsaved edits automatically reverts to the active profile values.
+
+Future ideas: real-time polar plot of current angle & effective duty ratio, per-mode presets, assist logic for hold mode.
+Update: Assist logic for hold mode has been implemented (see Hold Mode Assist above); future ideas now include visualization and presets.
 
 ### 7. Logging & Environment Variables
 Log file: `~/g13-debug.log`

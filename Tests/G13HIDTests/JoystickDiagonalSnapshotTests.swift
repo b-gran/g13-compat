@@ -8,7 +8,7 @@ final class JoystickDiagonalSnapshotTests: XCTestCase {
         let cfg = JoystickConfig(
             enabled: true,
             deadzone: 0.05,
-            events: .hold(diagonalAnglePercent: diagonalPercent, holdEnabled: true),
+            events: .hold(diagonalAnglePercent: diagonalPercent, holdEnabled: true, diagonalAssist: nil),
             upKey: "w", downKey: "s", leftKey: "a", rightKey: "d"
         )
         ctrl.configure(from: cfg)
