@@ -150,6 +150,28 @@ Examples:
 
 Timing: The secondary ON and OFF phases subdivide the base period (1 / `dutyCycleFrequency`) proportionally to the ratio. Minimum phase length is 5ms to avoid excessively rapid timers.
 
+Neutral → Diagonal Assist (optional):
+If diagonals are hard to trigger directly from center (stick prefers a single axis), add the following optional keys inside the `events` object to bias early diagonal detection:
+
+```
+"diagonalAssistAxisMultiplier": 0.85,
+"diagonalAssistMinAngle": 8.0,
+"diagonalAssistMaxAngle": 40.0,
+"diagonalAssistMinSecondaryRatio": 0.35
+```
+
+Rules:
+* Both |x| and |y| components must exceed `axisMultiplier * deadzone`.
+* Angular offset from nearest cardinal must lie within `[minAngle, maxAngle]` (degrees, ≤45).
+* When triggered, the secondary duty ratio is raised to at least `minSecondaryRatio`.
+
+Tuning:
+* Lower `diagonalAssistMinAngle` if assist rarely engages.
+* Raise `diagonalAssistAxisMultiplier` to make diagonals less sensitive.
+* Lower `diagonalAssistMinSecondaryRatio` for a softer diagonal feel.
+
+Omit all four keys to preserve legacy behavior.
+
 Event throttling (`maxEventsPerSecond`):
 Set an optional cap to reduce total key press/release transitions while preserving the perceived duty-cycle ratio. The controller scales the effective period so that transitions per second do not exceed the cap. Roughly, each full secondary cycle (press+release) counts as 2 events. Example: with `dutyCycleFrequency = 60` and `ratio = 0.5`, naive transitions could be high; if `maxEventsPerSecond = 5`, the period is stretched so cycles per second ≈ `cap / 2` while keeping ON:OFF proportion. Omit or set `null` to disable throttling. Primary key remains continuously held and is not throttled.
 

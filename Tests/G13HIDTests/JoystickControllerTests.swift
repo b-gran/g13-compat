@@ -48,7 +48,7 @@ final class JoystickControllerTests: XCTestCase {
         }
 
     // Test setting duty cycle parameters via configure
-    let cfg = JoystickConfig(events: .dutyCycle(frequency: 30.0, ratio: 1.0, maxEventsPerSecond: nil))
+    let cfg = JoystickConfig(events: .dutyCycle(frequency: 30.0, ratio: 1.0, maxEventsPerSecond: nil, diagonalAssist: nil))
     ctrl.configure(from: cfg)
     XCTAssertEqual(ctrl.dutyCycleFrequency, 30.0)
     // Simulate mid angle (22.5° offset) expecting ratio ~0.5 (base ratioProvider offset/45)

@@ -33,7 +33,7 @@ final class ConfigManagerTests: XCTestCase {
         XCTAssertTrue(config.joystick.enabled)
         XCTAssertEqual(config.joystick.deadzone, 0.15)
         // Default events mode should be duty cycle
-        if case .dutyCycle(let freq, let ratio, _) = config.joystick.events {
+    if case .dutyCycle(let freq, let ratio, _, _) = config.joystick.events {
             XCTAssertEqual(freq, 60.0)
             XCTAssertEqual(ratio, 0.5)
         } else { XCTFail("Expected dutyCycle events mode") }
@@ -155,13 +155,13 @@ final class ConfigManagerTests: XCTestCase {
     var joystick = JoystickConfig()
     joystick.deadzone = 0.25
     joystick.enabled = false
-    joystick.events = .dutyCycle(frequency: 30.0, ratio: 0.5, maxEventsPerSecond: nil)
+    joystick.events = .dutyCycle(frequency: 30.0, ratio: 0.5, maxEventsPerSecond: nil, diagonalAssist: nil)
 
         try manager.updateJoystick(joystick)
 
         let config = manager.getConfig()
         XCTAssertEqual(config.joystick.deadzone, 0.25)
-        if case .dutyCycle(let freq, _, _) = config.joystick.events {
+    if case .dutyCycle(let freq, _, _, _) = config.joystick.events {
             XCTAssertEqual(freq, 30.0)
         } else { XCTFail("Expected duty cycle mode") }
         XCTAssertFalse(config.joystick.enabled)
@@ -287,7 +287,7 @@ final class ConfigManagerTests: XCTestCase {
         let joystick = JoystickConfig(
             enabled: true,
             deadzone: 0.2,
-            events: .dutyCycle(frequency: 50.0, ratio: 0.6, maxEventsPerSecond: nil),
+            events: .dutyCycle(frequency: 50.0, ratio: 0.6, maxEventsPerSecond: nil, diagonalAssist: nil),
             upKey: "i",
             downKey: "k",
             leftKey: "j",
@@ -299,7 +299,7 @@ final class ConfigManagerTests: XCTestCase {
 
         XCTAssertEqual(decoded.enabled, true)
         XCTAssertEqual(decoded.deadzone, 0.2)
-        if case .dutyCycle(let freq, let ratio, _) = decoded.events {
+    if case .dutyCycle(let freq, let ratio, _, _) = decoded.events {
             XCTAssertEqual(freq, 50.0)
             XCTAssertEqual(ratio, 0.6)
         } else { XCTFail("Expected dutyCycle mode") }

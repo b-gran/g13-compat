@@ -80,13 +80,30 @@ public enum ModifierKind: String, Codable, CaseIterable {
 }
 
 /// Joystick configuration
+public struct JoystickDiagonalAssist: Codable {
+    public let axisThresholdMultiplier: Double
+    public let minAngleDegrees: Double
+    public let maxAngleDegrees: Double
+    public let minSecondaryRatio: Double
+
+    public init(axisThresholdMultiplier: Double = 0.85,
+                minAngleDegrees: Double = 8.0,
+                maxAngleDegrees: Double = 40.0,
+                minSecondaryRatio: Double = 0.35) {
+        self.axisThresholdMultiplier = axisThresholdMultiplier
+        self.minAngleDegrees = minAngleDegrees
+        self.maxAngleDegrees = maxAngleDegrees
+        self.minSecondaryRatio = minSecondaryRatio
+    }
+}
+
 public struct JoystickConfig: Codable {
     /// Nested events configuration describing behavior mode
     public enum EventsMode: Codable {
-        case dutyCycle(frequency: Double, ratio: Double, maxEventsPerSecond: Int?)
+    case dutyCycle(frequency: Double, ratio: Double, maxEventsPerSecond: Int?, diagonalAssist: JoystickDiagonalAssist?)
         case hold(diagonalAnglePercent: Double, holdEnabled: Bool)
 
-        private enum CodingKeys: String, CodingKey { case dutyCycleFrequency, dutyCycleRatio, maxEventsPerSecond, hold, diagonalAnglePercent }
+        private enum CodingKeys: String, CodingKey { case dutyCycleFrequency, dutyCycleRatio, maxEventsPerSecond, hold, diagonalAnglePercent, diagonalAssistAxisMultiplier, diagonalAssistMinAngle, diagonalAssistMaxAngle, diagonalAssistMinSecondaryRatio }
 
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -102,16 +119,34 @@ public struct JoystickConfig: Codable {
             let freq = try container.decodeIfPresent(Double.self, forKey: .dutyCycleFrequency) ?? 60.0
             let ratio = try container.decodeIfPresent(Double.self, forKey: .dutyCycleRatio) ?? 0.5
             let maxEvents = try container.decodeIfPresent(Int.self, forKey: .maxEventsPerSecond)
-            self = .dutyCycle(frequency: freq, ratio: ratio, maxEventsPerSecond: maxEvents)
+            // Diagonal assist (optional additive keys)
+            let axisMul = try container.decodeIfPresent(Double.self, forKey: .diagonalAssistAxisMultiplier)
+            let minAng = try container.decodeIfPresent(Double.self, forKey: .diagonalAssistMinAngle)
+            let maxAng = try container.decodeIfPresent(Double.self, forKey: .diagonalAssistMaxAngle)
+            let minRatio = try container.decodeIfPresent(Double.self, forKey: .diagonalAssistMinSecondaryRatio)
+            var assist: JoystickDiagonalAssist? = nil
+            if let axisMul = axisMul, let minAng = minAng, let maxAng = maxAng, let minRatio = minRatio {
+                assist = JoystickDiagonalAssist(axisThresholdMultiplier: axisMul,
+                                        minAngleDegrees: minAng,
+                                        maxAngleDegrees: maxAng,
+                                        minSecondaryRatio: minRatio)
+            }
+            self = .dutyCycle(frequency: freq, ratio: ratio, maxEventsPerSecond: maxEvents, diagonalAssist: assist)
         }
 
         public func encode(to encoder: Encoder) throws {
             var container = encoder.container(keyedBy: CodingKeys.self)
             switch self {
-            case .dutyCycle(let frequency, let ratio, let maxEvents):
+            case .dutyCycle(let frequency, let ratio, let maxEvents, let assist):
                 try container.encode(frequency, forKey: .dutyCycleFrequency)
                 try container.encode(ratio, forKey: .dutyCycleRatio)
                 if let m = maxEvents { try container.encode(m, forKey: .maxEventsPerSecond) }
+                if let a = assist {
+                    try container.encode(a.axisThresholdMultiplier, forKey: .diagonalAssistAxisMultiplier)
+                    try container.encode(a.minAngleDegrees, forKey: .diagonalAssistMinAngle)
+                    try container.encode(a.maxAngleDegrees, forKey: .diagonalAssistMaxAngle)
+                    try container.encode(a.minSecondaryRatio, forKey: .diagonalAssistMinSecondaryRatio)
+                }
             case .hold(let diagonalAnglePercent, let holdEnabled):
                 try container.encode(holdEnabled, forKey: .hold)
                 try container.encode(diagonalAnglePercent, forKey: .diagonalAnglePercent)
@@ -130,7 +165,7 @@ public struct JoystickConfig: Codable {
     public init(
         enabled: Bool = true,
         deadzone: Double = 0.15,
-        events: EventsMode = .dutyCycle(frequency: 60.0, ratio: 0.5, maxEventsPerSecond: nil),
+    events: EventsMode = .dutyCycle(frequency: 60.0, ratio: 0.5, maxEventsPerSecond: nil, diagonalAssist: nil),
         upKey: String = "w",
         downKey: String = "s",
         leftKey: String = "a",
@@ -165,7 +200,7 @@ public struct JoystickConfig: Codable {
             let freq = try container.decodeIfPresent(Double.self, forKey: .dutyCycleFrequency) ?? 60.0
             let ratio = try container.decodeIfPresent(Double.self, forKey: .dutyCycleRatio) ?? 0.5
             let maxEvents = try container.decodeIfPresent(Int.self, forKey: .maxEventsPerSecond)
-            self.events = .dutyCycle(frequency: freq, ratio: ratio, maxEventsPerSecond: maxEvents)
+            self.events = .dutyCycle(frequency: freq, ratio: ratio, maxEventsPerSecond: maxEvents, diagonalAssist: nil)
         }
     }
 

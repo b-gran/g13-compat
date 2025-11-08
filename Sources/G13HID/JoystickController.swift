@@ -9,10 +9,10 @@ public class JoystickController {
     public var dutyCycleFrequency: Double = 60.0  // Base cycles per second (for duty cycle mode)
     public var maxEventsPerSecond: Int? = nil      // Optional cap limiting press/release transitions for secondary key (duty cycle mode)
     public enum Mode {
-        case dutyCycle(ratioProvider: (Double) -> Double) // ratio based on angular offset function returns 0..1
+    case dutyCycle(ratioProvider: (Double) -> Double, diagonalAssist: JoystickDiagonalAssist?) // ratio based on angular offset function returns 0..1 + optional assist
         case hold(diagonalAnglePercent: Double) // dual-key hold with progressive travel from initial anchor
     }
-    public var mode: Mode = .dutyCycle(ratioProvider: { $0 / 45.0 }) // default (ratio = offset/45)
+    public var mode: Mode = .dutyCycle(ratioProvider: { $0 / 45.0 }, diagonalAssist: nil) // default (ratio = offset/45)
     // Debug instrumentation (set true during troubleshooting to emit hold-mode state transitions)
     public var debugHoldLogging: Bool = true
 
@@ -44,7 +44,7 @@ public class JoystickController {
     public func configure(from config: JoystickConfig) {
         self.deadzone = config.deadzone
         switch config.events {
-        case .dutyCycle(let frequency, let ratio, let maxEvents):
+    case .dutyCycle(let frequency, let ratio, let maxEvents, let assist):
             self.dutyCycleFrequency = frequency
             self.maxEventsPerSecond = maxEvents
             // ratio parameter from config represents maximum ratio at 45°, we scale actual offset proportionally
@@ -52,7 +52,7 @@ public class JoystickController {
                 let clamped = min(offsetDeg, 45.0)
                 let base = clamped / 45.0
                 return base * ratio // allow tuning vs default 1.0
-            })
+            }, diagonalAssist: assist)
         case .hold(let diagonalAnglePercent, _):
             // In hold mode we ignore dutyCycleFrequency/maxEvents
             self.maxEventsPerSecond = nil
@@ -72,14 +72,14 @@ public class JoystickController {
         }
 
         let angleDeg = normalizeAngleDegrees(atan2(y, x) * 180.0 / .pi) // 0° = right
-        let (primary, secondary, ratio) = computeKeys(angle: angleDeg)
+        let (primary, secondary, ratio) = computeKeys(angle: angleDeg, x: x, y: y, magnitude: magnitude)
         apply(primary: primary, secondary: secondary, ratio: ratio)
     }
 
     /// Compute primary key, secondary key, and duty cycle ratio based on angle.
     /// - Parameter angle: normalized 0..360 degrees (0 = right, 90 = up)
     /// - Returns: (primary, secondary, ratio) where ratio \in [0,1]
-    func computeKeys(angle: Double) -> (VirtualKeyboard.KeyCode?, VirtualKeyboard.KeyCode?, Double) {
+    func computeKeys(angle: Double, x: Double, y: Double, magnitude: Double) -> (VirtualKeyboard.KeyCode?, VirtualKeyboard.KeyCode?, Double) {
         // Cardinal anchors: Right(0), Up(90), Left(180), Down(270)
         let anchors: [(deg: Double, key: VirtualKeyboard.KeyCode)] = [
             (0, .d), (90, .w), (180, .a), (270, .s)
@@ -97,9 +97,24 @@ public class JoystickController {
         let primary = best.key
         let diffAbs = abs(bestDiff)
         switch mode {
-        case .dutyCycle(let ratioProvider):
+    case .dutyCycle(let ratioProvider, let assist):
             let ratio = ratioProvider(diffAbs)
-            if ratio <= 0.0001 { return (primary, nil, 0) }
+            var effectiveRatio = ratio
+            // Diagonal assist: if near neutral jump directly into diagonal (both axes engaged) enforce min ratio.
+            if let a = assist, effectiveRatio < a.minSecondaryRatio {
+                // Determine if angle offset lies within assist window.
+                if diffAbs >= a.minAngleDegrees && diffAbs <= a.maxAngleDegrees {
+                    effectiveRatio = max(effectiveRatio, a.minSecondaryRatio)
+                } else {
+                    // Additionally, detect strong simultaneous axis engagement: both |x| and |y| exceed axisThresholdMultiplier * deadzone * sqrt(2)
+                    // Use magnitude and component thresholds to decide if user intended diagonal.
+                    let componentThreshold = a.axisThresholdMultiplier * deadzone
+                    if abs(x) >= componentThreshold && abs(y) >= componentThreshold {
+                        effectiveRatio = max(effectiveRatio, a.minSecondaryRatio)
+                    }
+                }
+            }
+            if effectiveRatio <= 0.0001 { return (primary, nil, 0) }
             // Determine secondary based on direction of deviation from anchor
             let secondary: VirtualKeyboard.KeyCode
             switch best.key {
@@ -109,7 +124,7 @@ public class JoystickController {
             case .s: secondary = bestDiff > 0 ? .d : .a
             default: secondary = .w
             }
-            return (primary, secondary, ratio)
+            return (primary, secondary, effectiveRatio)
         case .hold(let diagonalAnglePercent):
             // Travel thresholds relative to initial anchor's 90° span toward adjacent cardinal.
             let thresholdAdd = diagonalAnglePercent * 90.0

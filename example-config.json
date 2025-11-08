@@ -328,7 +328,11 @@
     "events": {
       "dutyCycleFrequency": 60.0,
       "dutyCycleRatio": 0.5,
-      "maxEventsPerSecond": 5
+  "maxEventsPerSecond": 5,
+  "diagonalAssistAxisMultiplier": 0.85,
+  "diagonalAssistMinAngle": 8.0,
+  "diagonalAssistMaxAngle": 40.0,
+  "diagonalAssistMinSecondaryRatio": 0.35
     },
     "upKey": "w",
     "downKey": "s",
