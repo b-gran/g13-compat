@@ -106,6 +106,40 @@ final class JoystickHoldModeTests: XCTestCase {
         ctrl.stop()
         _ = kb
     }
+
+    func testReEngageSameDiagonalAfterDeadzoneClearsSecondaryState() {
+        // Use small diagonal percent so thresholdAdd is low for quick dual engagement.
+        let (ctrl, kb) = makeController(diagonalPercent: 0.15) // add=13.5°
+
+        // Step 1: Engage dual keys on w+a diagonal (angle just beyond add threshold from w toward a).
+        let (x1, y1) = angleVector(90 + 20.0)
+        ctrl.updateJoystick(x: x1, y: y1)
+        XCTAssertEqual(ctrl.primaryKey, .w)
+        XCTAssertEqual(ctrl.secondaryKey, .a)
+        XCTAssertTrue(kb.pressed.contains(.w))
+        XCTAssertTrue(kb.pressed.contains(.a))
+        let pressEventsInitial = kb.pressEvents
+        let releaseEventsInitial = kb.releaseEvents
+
+        // Step 2: Move into deadzone (center) — should release both keys and clear secondary state.
+        ctrl.updateJoystick(x: 0.0, y: 0.0)
+        XCTAssertNil(ctrl.primaryKey)
+        XCTAssertNil(ctrl.secondaryKey)
+        XCTAssertFalse(kb.pressed.contains(.w))
+        XCTAssertFalse(kb.pressed.contains(.a))
+        let releasesAfterDeadzone = kb.releaseEvents - releaseEventsInitial
+        XCTAssertEqual(releasesAfterDeadzone, 2, "Expected two key releases when entering deadzone (primary + secondary)")
+
+        // Step 3: Re-engage the SAME diagonal angle; secondary key should be pressed again (not skipped due to stale state).
+        let (x2, y2) = angleVector(90 + 20.0)
+        ctrl.updateJoystick(x: x2, y: y2)
+        XCTAssertEqual(ctrl.primaryKey, .w)
+        XCTAssertEqual(ctrl.secondaryKey, .a, "Secondary should re-engage after deadzone clear")
+        // We expect two new presses (w,a) since both were released.
+        let newPresses = kb.pressEvents - pressEventsInitial
+        XCTAssertEqual(newPresses, 2, "Expected fresh presses for both primary and secondary after re-engaging diagonal")
+        ctrl.stop()
+    }
 }
 
 #if !canImport(ObjectiveC)
@@ -115,6 +149,7 @@ extension JoystickHoldModeTests {
         ("testDropPrimaryNearSecondaryAxis", testDropPrimaryNearSecondaryAxis),
         ("testOnlyTwoKeysHeld", testOnlyTwoKeysHeld)
         ,("testPrimaryKeyRemainsPressedAfterDrop", testPrimaryKeyRemainsPressedAfterDrop)
+        ,("testReEngageSameDiagonalAfterDeadzoneClearsSecondaryState", testReEngageSameDiagonalAfterDeadzoneClearsSecondaryState)
     ]
 }
 #endif

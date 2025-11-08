@@ -289,6 +289,12 @@ public class JoystickController {
                 try? keyboard.releaseKey(sk)
             }
         }
+        // IMPORTANT: Clear cached secondary after releasing. Without this, if we enter a neutral/deadzone state
+        // and then re-engage a diagonal with the *same* secondary key, apply(primary:secondary:ratio:) will see
+        // secondaryChanged == false and skip pressing it again—resulting in only the primary held while repeated
+        // release events fire for a key that is no longer actually pressed. Clearing ensures a fresh press.
+        currentSecondary = nil
+        currentSecondaryRatio = 0.0
         secondaryPhaseIsOn = false
     }
 
