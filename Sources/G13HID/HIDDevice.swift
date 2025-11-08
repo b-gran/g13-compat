@@ -260,7 +260,7 @@ public class HIDDevice {
             rawData: rawData
         )
 
-        // Handle joystick input with virtual keyboard
+        // Handle joystick input with virtual keyboard via standard Generic Desktop axes
         if usagePage == joystickUsagePage {
             if usage == joystickXUsage {
                 joystickX = intValue
@@ -268,6 +268,16 @@ public class HIDDevice {
             } else if usage == joystickYUsage {
                 joystickY = intValue
                 updateJoystickController()
+            }
+        } else if length == 7 && usagePage != 0x09 { // Vendor 7-byte fallback (no exposed axes elements)
+            // Attempt to extract axes from bytes 0 and 1 (empirically center ~0x80)
+            if let (xRaw, yRaw) = extractVendorJoystickAxes(report: rawData) {
+                joystickX = xRaw
+                joystickY = yRaw
+                if currentConfig?.joystick.enabled == true {
+                    joystickController?.updateJoystickRaw(x: xRaw, y: yRaw)
+                    logDebug("VendorJoystick: xRaw=\(xRaw) yRaw=\(yRaw) -> normalizedX=\(Double(xRaw-128)/128.0) normalizedY=\(-Double(yRaw-128)/128.0)")
+                }
             }
         }
 
@@ -283,6 +293,17 @@ public class HIDDevice {
         if config.joystick.enabled {
             controller.updateJoystickRaw(x: joystickX, y: joystickY)
         }
+    }
+
+    /// Fallback axis extraction for raw 7-byte vendor reports (usagePage 0xFF00) when macOS does not surface per-axis elements.
+    /// Heuristic: first byte is X, second byte is Y (center approx 0x80). Returns nil if values appear invalid.
+    /// Exposed internal for tests.
+    func extractVendorJoystickAxes(report: [UInt8]) -> (Int64, Int64)? {
+        guard report.count == 7 else { return nil }
+        let x = Int64(report[0])
+        let y = Int64(report[1])
+        // Basic sanity: bytes typically between 0x00 and 0xFF, center near 0x80. Accept all for now.
+        return (x, y)
     }
 
     

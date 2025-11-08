@@ -92,6 +92,8 @@ Switch via config `keyboardOutputMode`. Fallback logic attempts HID then falls b
 ### 6. Joystick Handling
 `JoystickController` reads analog axes, applies configurable deadzone (`deadzone`) and duty-cycle gating (`dutyCycleFrequency` & `dutyCycleRatio`) to reduce event spam. Emits mapped WASD-style keys based on directional quadrant resolution (including diagonals). Disable via `"enabled": false` in joystick config.
 
+Fallback axis extraction: On macOS versions where the G13 does not expose separate Generic Desktop X/Y elements, only a 7-byte vendor report (usagePage `0xFF00`) is received. In this case the first two bytes are heuristically treated as X/Y (center ≈ `0x80`) and normalized to the range -1.0..1.0. This enables joystick key emission even without dedicated axis elements. Debug logs prefixed with `VendorJoystick:` show raw and normalized values.
+
 ### 7. Logging & Environment Variables
 Log file: `~/g13-debug.log`
 
