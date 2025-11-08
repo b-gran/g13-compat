@@ -56,6 +56,43 @@ Key sections:
 
 Reload behavior: Config is loaded once at startup and updates via explicit update calls (see `ConfigManager`).
 
+#### Multiple Profiles (New)
+
+You can now maintain several profiles in a single config file by storing an array of objects instead of just one. Each profile object must include a `name` field used for selection in the SwiftUI app.
+
+Example multi-profile file:
+
+```json
+[
+    {
+        "name": "RPG Default",
+        "keyboardOutputMode": "cgEvent",
+        "macros": { /* macros omitted for brevity */ },
+        "gKeys": [ /* G key mappings */ ],
+        "joystick": { /* joystick settings */ }
+    },
+    {
+        "name": "Shooter Hold Mode",
+        "keyboardOutputMode": "cgEvent",
+        "macros": { /* alternate macros */ },
+        "gKeys": [ /* alternate mappings */ ],
+        "joystick": {
+            "enabled": true,
+            "deadzone": 0.12,
+            "events": { "hold": true, "diagonalAnglePercent": 0.18 },
+            "upKey": "w", "downKey": "s", "leftKey": "a", "rightKey": "d"
+        }
+    }
+]
+```
+
+Behavior & migration:
+- If the file contains a single legacy object (no surrounding array), it is auto-migrated to `[ { ..legacyObject.. } ]` with `name` set to `"Default"`.
+- Profile switching updates macros, key mappings, joystick settings and keyboard output mode instantly without app restart.
+- Export/import operations now work on the full array.
+
+To add a new profile, append another object with a distinct `name` and desired mappings.
+
 ### 4. Macro System
 Macro actions (`MacroAction`): `keyPress`, `keyRelease`, `keyTap`, `delay(milliseconds)`, `text`.
 - Key taps & delays are scheduled asynchronously (non-blocking).

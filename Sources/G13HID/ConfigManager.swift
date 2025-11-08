@@ -183,17 +183,20 @@ public struct JoystickConfig: Codable {
 
 /// Complete G13 configuration
 public struct G13Config: Codable {
+    public var name: String
     public var macros: [String: Macro]
     public var gKeys: [GKeyConfig]
     public var joystick: JoystickConfig
     public var keyboardOutputMode: KeyboardOutputMode
 
     public init(
+        name: String = "Default",
         macros: [String: Macro] = [:],
         gKeys: [GKeyConfig] = [],
         joystick: JoystickConfig = JoystickConfig(),
         keyboardOutputMode: KeyboardOutputMode = .cgEvent
     ) {
+        self.name = name
         self.macros = macros
         self.gKeys = gKeys
         self.joystick = joystick
@@ -219,6 +222,7 @@ public struct G13Config: Codable {
         }
 
         return G13Config(
+            name: "Default",
             macros: [:],
             gKeys: gKeys,
             joystick: JoystickConfig()
@@ -230,7 +234,8 @@ public struct G13Config: Codable {
 public class ConfigManager {
     private let fileManager = FileManager.default
     private var configPath: URL
-    private var config: G13Config
+    private var profiles: [G13Config]
+    private var activeProfileIndex: Int = 0
 
     public enum ConfigError: Error, LocalizedError {
         case fileNotFound
@@ -262,62 +267,89 @@ public class ConfigManager {
         }
 
         // Initialize with default config first
-        self.config = G13Config.defaultConfig()
+    self.profiles = [G13Config.defaultConfig()]
 
         // Try to load existing config, or save default
         if fileManager.fileExists(atPath: self.configPath.path) {
-            self.config = try loadConfig()
+            // Attempt to load as array first, then fallback to single object
+            do {
+                try loadProfiles()
+            } catch {
+                // Fallback: try legacy single-config decoding
+                do {
+                    let legacy = try loadSingleConfig()
+                    self.profiles = [legacy]
+                    try saveProfiles() // migrate immediately to array format
+                } catch {
+                    throw error
+                }
+            }
         } else {
-            try saveConfig()
+            try saveProfiles()
         }
     }
 
     /// Get the current configuration
-    public func getConfig() -> G13Config {
-        return config
+    public func getConfig() -> G13Config { profiles[activeProfileIndex] }
+
+    /// Get all profiles
+    public func getProfiles() -> [G13Config] { profiles }
+
+    /// Switch active profile by index (bounds checked). Returns new active config.
+    @discardableResult
+    public func activateProfile(index: Int) -> G13Config? {
+        guard profiles.indices.contains(index) else { return nil }
+        activeProfileIndex = index
+        return getConfig()
     }
 
     /// Update the configuration
     public func updateConfig(_ newConfig: G13Config) throws {
-        self.config = newConfig
-        try saveConfig()
+        profiles[activeProfileIndex] = newConfig
+        try saveProfiles()
     }
 
     /// Update just the macros
     public func updateMacros(_ macros: [String: Macro]) throws {
-        config.macros = macros
-        try saveConfig()
+        profiles[activeProfileIndex].macros = macros
+        try saveProfiles()
     }
 
     /// Update just the G key mappings
     public func updateGKeys(_ gKeys: [GKeyConfig]) throws {
-        config.gKeys = gKeys
-        try saveConfig()
+        profiles[activeProfileIndex].gKeys = gKeys
+        try saveProfiles()
     }
 
     /// Update just the joystick config
     public func updateJoystick(_ joystick: JoystickConfig) throws {
-        config.joystick = joystick
-        try saveConfig()
+        profiles[activeProfileIndex].joystick = joystick
+        try saveProfiles()
     }
 
     /// Load configuration from file
-    private func loadConfig() throws -> G13Config {
+    private func loadSingleConfig() throws -> G13Config {
+        let data = try Data(contentsOf: configPath)
+        let decoder = JSONDecoder()
+        return try decoder.decode(G13Config.self, from: data)
+    }
+
+    private func loadProfiles() throws {
         do {
             let data = try Data(contentsOf: configPath)
             let decoder = JSONDecoder()
-            return try decoder.decode(G13Config.self, from: data)
+            self.profiles = try decoder.decode([G13Config].self, from: data)
         } catch {
             throw ConfigError.loadFailed(error.localizedDescription)
         }
     }
 
     /// Save configuration to file
-    private func saveConfig() throws {
+    private func saveProfiles() throws {
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(config)
+            let data = try encoder.encode(profiles)
             try data.write(to: configPath, options: .atomic)
         } catch {
             throw ConfigError.saveFailed(error.localizedDescription)
@@ -334,7 +366,7 @@ public class ConfigManager {
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(config)
+            let data = try encoder.encode(profiles)
             try data.write(to: path, options: .atomic)
         } catch {
             throw ConfigError.saveFailed(error.localizedDescription)
@@ -346,9 +378,13 @@ public class ConfigManager {
         do {
             let data = try Data(contentsOf: path)
             let decoder = JSONDecoder()
-            let newConfig = try decoder.decode(G13Config.self, from: data)
-            self.config = newConfig
-            try saveConfig()
+            if let array = try? decoder.decode([G13Config].self, from: data) {
+                self.profiles = array
+            } else {
+                let single = try decoder.decode(G13Config.self, from: data)
+                self.profiles = [single]
+            }
+            try saveProfiles()
         } catch {
             throw ConfigError.loadFailed(error.localizedDescription)
         }

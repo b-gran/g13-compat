@@ -14,6 +14,8 @@ class HIDMonitor: ObservableObject, HIDDeviceDelegate {
     @Published var hasAccessibilityPermission = false
     @Published var keyboardOutputMode: String = "Unknown"
     @Published var config: G13Config? // expose current config for editing
+    @Published var profiles: [G13Config] = []
+    @Published var activeProfileIndex: Int = 0
     private var hidDevice: HIDDevice?
     private var permissionCheckTimer: Timer?
 
@@ -26,6 +28,7 @@ class HIDMonitor: ObservableObject, HIDDeviceDelegate {
             if let config = hidDevice?.getConfigManager()?.getConfig() {
                 keyboardOutputMode = config.keyboardOutputMode.description
                 self.config = config
+                self.profiles = hidDevice?.getConfigManager()?.getProfiles() ?? [config]
             }
         } catch HIDDeviceError.permissionDenied {
             errorMessage = "Permission denied. Try running with sudo."
@@ -68,6 +71,7 @@ class HIDMonitor: ObservableObject, HIDDeviceDelegate {
             self.isConnected = true
             self.errorMessage = nil
             self.config = device.getConfigManager()?.getConfig()
+            self.profiles = device.getConfigManager()?.getProfiles() ?? (self.config.map { [$0] } ?? [])
         }
     }
     
@@ -98,6 +102,23 @@ class HIDMonitor: ObservableObject, HIDDeviceDelegate {
             DispatchQueue.main.async { self.errorMessage = "Failed to save config: \(error)" }
         }
     }
+
+    // MARK: - Profile Management
+    func activateProfile(index: Int) {
+        guard let device = hidDevice else { return }
+        do {
+            if let newCfg = try device.activateProfile(index: index) {
+                DispatchQueue.main.async {
+                    self.activeProfileIndex = index
+                    self.config = newCfg
+                    self.profiles = device.getConfigManager()?.getProfiles() ?? [newCfg]
+                    self.keyboardOutputMode = newCfg.keyboardOutputMode.description
+                }
+            }
+        } catch {
+            DispatchQueue.main.async { self.errorMessage = "Failed to activate profile: \(error)" }
+        }
+    }
 }
 
 @available(macOS 13.0, *)
@@ -117,6 +138,22 @@ struct ContentView: View {
                     .font(.headline)
                 Text(monitor.keyboardOutputMode)
                     .foregroundColor(.blue)
+            }
+
+            // Profile Picker
+            if !monitor.profiles.isEmpty {
+                HStack {
+                    Text("Profile:").font(.headline)
+                    Picker("Profile", selection: $monitor.activeProfileIndex) {
+                        ForEach(Array(monitor.profiles.enumerated()), id: \.offset) { idx, profile in
+                            Text(profile.name).tag(idx)
+                        }
+                    }
+                    .onChange(of: monitor.activeProfileIndex) { newValue in
+                        monitor.activateProfile(index: newValue)
+                    }
+                    .frame(width: 180)
+                }
             }
 
             // Accessibility Permission Status

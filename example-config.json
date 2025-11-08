@@ -1,4 +1,6 @@
-{
+[
+  {
+  "name": "RPG Default",
   "keyboardOutputMode": "cgEvent",
   "macros": {
     "quickSave": {
@@ -333,4 +335,5 @@
     "leftKey": "a",
     "rightKey": "d"
   }
-}
+  }
+]

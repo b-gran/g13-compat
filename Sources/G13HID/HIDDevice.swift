@@ -323,6 +323,21 @@ public class HIDDevice {
         return configManager
     }
 
+    /// Switch active profile by index and reload in-memory references.
+    @discardableResult
+    public func activateProfile(index: Int) throws -> G13Config? {
+        guard let mgr = configManager else { return nil }
+        guard let newCfg = mgr.activateProfile(index: index) else { return nil }
+        self.currentConfig = newCfg
+        // Update dependent components
+        if let macro = macroEngine {
+            for (key, macroObj) in newCfg.macros { macro.registerMacro(key: key, macro: macroObj) }
+        }
+        keyMapper?.updateConfig(newCfg)
+        joystickController?.configure(from: newCfg.joystick)
+        return newCfg
+    }
+
     public func getKeyboardOutput() -> KeyboardOutput? {
         return keyboardOutput
     }
