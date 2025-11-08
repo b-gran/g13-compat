@@ -79,6 +79,33 @@ final class JoystickHoldModeTests: XCTestCase {
         }
         ctrl.stop()
     }
+
+    func testPrimaryKeyRemainsPressedAfterDrop() {
+        // Use p=0.25 so add=22.5°, drop=67.5° along the 90° span.
+        let (ctrl, kb) = makeController(diagonalPercent: 0.25)
+        // Move just beyond add threshold to engage dual keys w+a.
+        let (x1, y1) = angleVector(90 + 25.0)
+        ctrl.updateJoystick(x: x1, y: y1)
+        XCTAssertEqual(ctrl.primaryKey, .w)
+        XCTAssertEqual(ctrl.secondaryKey, .a)
+        XCTAssertTrue(kb.pressed.contains(.w))
+        XCTAssertTrue(kb.pressed.contains(.a))
+        let pressEventsBeforeDrop = kb.pressEvents
+        let releaseEventsBeforeDrop = kb.releaseEvents
+        // Move beyond drop threshold to promote 'a' to primary.
+        let (x2, y2) = angleVector(90 + 70.0) // progress ~70° > 67.5° drop
+        ctrl.updateJoystick(x: x2, y: y2)
+        XCTAssertEqual(ctrl.primaryKey, .a)
+        XCTAssertNil(ctrl.secondaryKey)
+        // 'a' should remain in pressed set, 'w' should be released.
+        XCTAssertTrue(kb.pressed.contains(.a), "Primary 'a' should remain pressed after drop")
+        XCTAssertFalse(kb.pressed.contains(.w), "Old primary 'w' should be released")
+        // Ensure we did not generate an extra release for 'a' (which would indicate flicker).
+        XCTAssertEqual(kb.releaseEvents - releaseEventsBeforeDrop, 1, "Only one release (of old primary) expected on drop")
+        XCTAssertEqual(kb.pressEvents - pressEventsBeforeDrop, 0, "No additional press needed since 'a' was already pressed as secondary")
+        ctrl.stop()
+        _ = kb
+    }
 }
 
 #if !canImport(ObjectiveC)
@@ -87,6 +114,7 @@ extension JoystickHoldModeTests {
         ("testAddSecondaryAtThreshold", testAddSecondaryAtThreshold),
         ("testDropPrimaryNearSecondaryAxis", testDropPrimaryNearSecondaryAxis),
         ("testOnlyTwoKeysHeld", testOnlyTwoKeysHeld)
+        ,("testPrimaryKeyRemainsPressedAfterDrop", testPrimaryKeyRemainsPressedAfterDrop)
     ]
 }
 #endif
