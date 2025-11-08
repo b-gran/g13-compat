@@ -141,6 +141,49 @@ public class JoystickController {
             if progress >= thresholdDrop {
                 // Drop initial primary; keep only target.
                 holdDroppedPrimary = true
+
+                // Re-anchor logic: when we have dropped primary and advanced well beyond the secondary (close to completing 90° span)
+                // allow starting a new segment so continuous circular motion keeps producing dual-key transitions.
+                // Condition: current nearest anchor equals secondaryTarget OR progress very close to 90°, and angular deviation from
+                // secondaryTarget exceeds add threshold for the next segment.
+                let nearestIsSecondary = (primary == secondaryTarget)
+                let nearEndOfSpan = progress > 85.0 // near completion of 90° travel
+                if nearestIsSecondary || nearEndOfSpan {
+                    // Evaluate possibility to start a new segment forward from secondaryTarget toward its adjacent.
+                    let nextAnchor = secondaryTarget
+                    let nextAnchorAngle: Double
+                    switch nextAnchor {
+                    case .d: nextAnchorAngle = 0
+                    case .w: nextAnchorAngle = 90
+                    case .a: nextAnchorAngle = 180
+                    case .s: nextAnchorAngle = 270
+                    default: nextAnchorAngle = 0
+                    }
+                    let nextDiff = abs(angularDifference(angle, nextAnchorAngle))
+                    // Only re-anchor if we have moved away from this cardinal enough to begin a new dual-key hold.
+                    if nextDiff >= thresholdAdd {
+                        // Reset and start new session anchored at nextAnchor continuing same rotational direction.
+                        holdInitialAnchorKey = nextAnchor
+                        holdInitialAnchorAngle = nextAnchorAngle
+                        // direction remains the same (continuous rotation)
+                        holdDroppedPrimary = false
+                        // Recompute progress from new anchor.
+                        let newProgress = angularProgress(from: nextAnchorAngle, to: angle, clockwise: holdDirectionClockwise)
+                        if newProgress >= thresholdDrop {
+                            // Immediately dropped again (rare unless huge angle jump); emit just its adjacent.
+                            let newSecondary = adjacentCardinal(from: nextAnchor, clockwise: holdDirectionClockwise)
+                            holdDroppedPrimary = true
+                            return (newSecondary, nil, 0)
+                        } else if newProgress >= thresholdAdd {
+                            let newSecondary = adjacentCardinal(from: nextAnchor, clockwise: holdDirectionClockwise)
+                            return (nextAnchor, newSecondary, 1.0)
+                        } else {
+                            // Not far enough yet for secondary in new segment; just primary of new anchor.
+                            return (nextAnchor, nil, 0)
+                        }
+                    }
+                }
+
                 return (secondaryTarget, nil, 0)
             }
             // Both keys held.

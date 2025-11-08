@@ -161,6 +161,12 @@ Hold mode semantics:
 - Primary key releases at `dropThreshold = (1 - diagonalAnglePercent) * 90°` (secondary then becomes the sole primary).
 - At most two keys are ever held simultaneously.
 
+Continuous rotation (hold mode) re-anchor behavior:
+- When rotating past a diagonal and the original primary key drops (having crossed the drop threshold), the controller automatically starts a new 90° segment anchored on the key that is now closest to the current angle.
+- This "segment chaining" prevents stalls that could otherwise occur after completing a quadrant. Without re-anchoring, long circular motions could end up with no primary key held while progress remained capped at the end of the old segment.
+- Re-anchor triggers when: (a) the previous primary has been released and angular progress is near or beyond the end of its 90° span, or (b) the nearest cardinal to the current angle equals the secondary key (meaning we have effectively transitioned to the next quadrant).
+- Effect: Continuous circular motion (multiple full rotations) keeps emitting appropriate key holds and transitions with no prolonged gaps; verified by `JoystickContinuousRotationTests`.
+
 ### 7. Logging & Environment Variables
 Log file: `~/g13-debug.log`
 
