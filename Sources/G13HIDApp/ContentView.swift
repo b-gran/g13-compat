@@ -13,6 +13,7 @@ class HIDMonitor: ObservableObject, HIDDeviceDelegate {
     @Published var errorMessage: String?
     @Published var hasAccessibilityPermission = false
     @Published var keyboardOutputMode: String = "Unknown"
+    @Published var config: G13Config? // expose current config for editing
     private var hidDevice: HIDDevice?
     private var permissionCheckTimer: Timer?
 
@@ -24,6 +25,7 @@ class HIDMonitor: ObservableObject, HIDDeviceDelegate {
             // Get keyboard output mode
             if let config = hidDevice?.getConfigManager()?.getConfig() {
                 keyboardOutputMode = config.keyboardOutputMode.description
+                self.config = config
             }
         } catch HIDDeviceError.permissionDenied {
             errorMessage = "Permission denied. Try running with sudo."
@@ -65,6 +67,7 @@ class HIDMonitor: ObservableObject, HIDDeviceDelegate {
         DispatchQueue.main.async {
             self.isConnected = true
             self.errorMessage = nil
+            self.config = device.getConfigManager()?.getConfig()
         }
     }
     
@@ -73,12 +76,35 @@ class HIDMonitor: ObservableObject, HIDDeviceDelegate {
             self.isConnected = false
         }
     }
+
+    // MARK: - Config Editing Support
+    func updateMapping(for gKey: Int, action: GKeyAction) {
+        guard var cfg = config else { return }
+        if let idx = cfg.gKeys.firstIndex(where: { $0.keyNumber == gKey }) {
+            cfg.gKeys[idx] = GKeyConfig(keyNumber: gKey, action: action)
+        } else {
+            cfg.gKeys.append(GKeyConfig(keyNumber: gKey, action: action))
+        }
+        applyConfig(cfg)
+    }
+
+    private func applyConfig(_ newConfig: G13Config) {
+        guard let mgr = hidDevice?.getConfigManager() else { return }
+        do {
+            try mgr.updateConfig(newConfig)
+            try hidDevice?.reloadConfig()
+            DispatchQueue.main.async { self.config = newConfig }
+        } catch {
+            DispatchQueue.main.async { self.errorMessage = "Failed to save config: \(error)" }
+        }
+    }
 }
 
 @available(macOS 13.0, *)
 struct ContentView: View {
     @StateObject private var monitor = HIDMonitor()
     @StateObject private var joystickSettings = JS()
+    @State private var showingKeymapEditor = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -149,6 +175,19 @@ struct ContentView: View {
                 if monitor.isConnected {
                     JoystickCalibrationView(settings: joystickSettings, monitor: monitor)
                         .padding(Edge.Set.top)
+                    // Keymap editor launcher
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Key Mappings")
+                            .font(.headline)
+                        Button("Open Keymap Editor") {
+                            showingKeymapEditor = true
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .sheet(isPresented: $showingKeymapEditor) {
+                            KeyMapEditorView(monitor: monitor)
+                                .frame(minWidth: 520, minHeight: 600)
+                        }
+                    }
                 }
 
                 if let input = monitor.lastInput {

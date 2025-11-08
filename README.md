@@ -20,20 +20,16 @@ An experimental macOS Swift implementation to bring the Logitech G13 keypad back
 ### 1. Quick Start
 
 ```
-git clone <repo>
 cd g13-compat
 swift build
 swift run G13HIDApp  # GUI / SwiftUI front-end
 ```
 
 Or run the daemon (headless):
-
-```
 swift run G13HIDDaemon
 ```
 
 Drop a config at `~/.g13-config.json` (or copy `example-config.json`). Press G keys to see mapped actions executed; check `~/g13-debug.log` for detailed output.
-
 ### 2. Architecture Overview
 
 Core modules (under `Sources/G13HID`):
