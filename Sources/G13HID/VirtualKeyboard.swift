@@ -52,9 +52,27 @@ public class VirtualKeyboard: KeyboardOutput {
     private var device: VirtualHIDDevice?
     private var pressedKeys: Set<UInt8> = []
 
-    public enum KeyboardError: Error {
+    public enum KeyboardError: Error, LocalizedError, Equatable {
         case failedToCreateDevice
         case deviceNotActive
+        case reportSendFailed(code: IOReturn)
+        case entitlementMissing
+        case unknownFailure(String)
+
+        public var errorDescription: String? {
+            switch self {
+            case .failedToCreateDevice:
+                return "Failed to create virtual HID device (IOHIDUserDeviceCreate returned nil)"
+            case .deviceNotActive:
+                return "Virtual device not active"
+            case .reportSendFailed(let code):
+                return "Failed to send HID report (IOReturn=0x\(String(code, radix: 16)))"
+            case .entitlementMissing:
+                return "Missing com.apple.developer.hid.virtual.device entitlement"
+            case .unknownFailure(let msg):
+                return "Unknown virtual keyboard failure: \(msg)"
+            }
+        }
     }
 
     // HID Keyboard Usage IDs (USB HID Usage Tables)
@@ -226,6 +244,8 @@ public class VirtualKeyboard: KeyboardOutput {
         ] as [CFString: Any]
 
         guard let userDevice = createVirtualDevice(properties: properties as CFDictionary) else {
+            // Distinguish entitlement absence via heuristic: if running without entitlement typical failure occurs
+            // (We logged guidance in createVirtualDevice). Surface specific error for caller.
             throw KeyboardError.failedToCreateDevice
         }
 
@@ -296,7 +316,7 @@ public class VirtualKeyboard: KeyboardOutput {
         let result = sendReport(device, data)
 
         if result != kIOReturnSuccess {
-            throw KeyboardError.deviceNotActive
+            throw KeyboardError.reportSendFailed(code: result)
         }
     }
 

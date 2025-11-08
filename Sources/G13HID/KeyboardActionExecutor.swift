@@ -24,6 +24,7 @@ public enum KeyboardActionError: Error, LocalizedError, Equatable {
 }
 
 /// Executes keyboard actions using a KeyboardOutput + MacroEngine.
+/// Surfaces granular errors from underlying implementations (VirtualKeyboard.KeyboardError, CGEventKeyboard.KeyboardError).
 public final class KeyboardActionExecutor {
     private let keyboard: KeyboardOutput
     private let macroEngine: MacroEngine

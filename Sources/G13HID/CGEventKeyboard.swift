@@ -206,10 +206,11 @@ public class CGEventKeyboard: KeyboardOutput {
 
     // MARK: - Error Types
 
-    public enum KeyboardError: Error, LocalizedError {
+    public enum KeyboardError: Error, LocalizedError, Equatable {
         case unsupportedKey(VirtualKeyboard.KeyCode)
         case eventCreationFailed
         case accessibilityDenied
+        case postFailed(String)
 
         public var errorDescription: String? {
             switch self {
@@ -219,6 +220,8 @@ public class CGEventKeyboard: KeyboardOutput {
                 return "Failed to create CGEvent"
             case .accessibilityDenied:
                 return "Accessibility permission denied (AXIsProcessTrusted == false)"
+            case .postFailed(let msg):
+                return "Failed to post CGEvent: \(msg)"
             }
         }
     }

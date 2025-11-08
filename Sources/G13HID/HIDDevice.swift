@@ -45,6 +45,7 @@ public class HIDDevice {
     private var keyMapper: KeyMapper?
     private var joystickController: JoystickController?
     private var configManager: ConfigManager?
+    private var currentConfig: G13Config? // Cached config instance loaded once and updated on reload
     private var rawReportParser: RawReportParser? = G13VendorReportParser()
 
     // Constants for the G13
@@ -69,7 +70,9 @@ public class HIDDevice {
             self.configManager = config
 
             // Create keyboard output based on config
-            let outputMode = config.getConfig().keyboardOutputMode
+            let loaded = config.getConfig()
+            self.currentConfig = loaded
+            let outputMode = loaded.keyboardOutputMode
             log("Keyboard output mode: \(outputMode.description)")
 
             let keyboard: KeyboardOutput
@@ -86,17 +89,16 @@ public class HIDDevice {
             self.macroEngine = macro
 
             // Register macros from config
-            for (key, macroObj) in config.getConfig().macros {
+            for (key, macroObj) in loaded.macros {
                 macro.registerMacro(key: key, macro: macroObj)
             }
-
-            let mapper = KeyMapper(keyboard: keyboard, macroEngine: macro, config: config.getConfig())
+            let mapper = KeyMapper(keyboard: keyboard, macroEngine: macro, config: loaded)
             self.keyMapper = mapper
 
             let joystick = JoystickController(keyboard: keyboard)
-            joystick.deadzone = config.getConfig().joystick.deadzone
-            joystick.dutyCycleFrequency = config.getConfig().joystick.dutyCycleFrequency
-            joystick.dutyCycleRatio = config.getConfig().joystick.dutyCycleRatio
+            joystick.deadzone = loaded.joystick.deadzone
+            joystick.dutyCycleFrequency = loaded.joystick.dutyCycleFrequency
+            joystick.dutyCycleRatio = loaded.joystick.dutyCycleRatio
             self.joystickController = joystick
 
             log("Keyboard output initialized successfully")
@@ -277,8 +279,7 @@ public class HIDDevice {
 
     private func updateJoystickController() {
         guard let controller = joystickController else { return }
-        guard let config = configManager?.getConfig() else { return }
-
+        guard let config = currentConfig else { return }
         if config.joystick.enabled {
             controller.updateJoystickRaw(x: joystickX, y: joystickY)
         }
@@ -313,7 +314,8 @@ public class HIDDevice {
     public func reloadConfig() throws {
         guard let config = configManager else { return }
 
-        let newConfig = config.getConfig()
+    let newConfig = config.getConfig()
+    self.currentConfig = newConfig
 
         // Update macro engine
         if let macro = macroEngine {

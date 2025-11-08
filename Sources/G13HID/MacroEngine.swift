@@ -83,7 +83,7 @@ public class MacroEngine {
     private let keyboard: KeyboardOutput
     private var macros: [String: Macro] = [:]
     private var executionQueue = DispatchQueue(label: "com.g13compat.macroengine", qos: .userInitiated)
-    private var isExecuting = false
+    private var isExecuting = false // Reserved for future use (sequential execution semantics)
 
     public init(keyboard: KeyboardOutput) {
         self.keyboard = keyboard
@@ -109,32 +109,44 @@ public class MacroEngine {
         return macros
     }
 
-    /// Execute a macro by key
-    public func executeMacro(key: String, completion: ((Result<Void, Error>) -> Void)? = nil) {
+    /// Execute a macro by key. Optional cancellation token allows mid-run abort.
+    /// - Parameters:
+    ///   - key: Registered macro key
+    ///   - token: Optional cancellation token
+    ///   - completion: Completion callback invoked on success or failure (including cancellation)
+    /// - Returns: Provided or newly created cancellation token (use to cancel execution)
+    @discardableResult
+    public func executeMacro(key: String,
+                             token: MacroCancellationToken? = nil,
+                             completion: ((Result<Void, Error>) -> Void)? = nil) -> MacroCancellationToken? {
         guard let macro = macros[key] else {
             completion?(.failure(MacroError.macroNotFound(key)))
-            return
+            return token
         }
+
+        let runToken = token ?? MacroCancellationToken()
 
         executionQueue.async { [weak self] in
             guard let self = self else { return }
 
             do {
-                try self.runMacro(macro)
+                try self.runMacro(macro, token: runToken)
                 completion?(.success(()))
             } catch {
                 completion?(.failure(error))
             }
         }
+        return runToken
     }
 
-    private func runMacro(_ macro: Macro) throws {
+    private func runMacro(_ macro: Macro, token: MacroCancellationToken?) throws {
         for action in macro.actions {
-            try executeAction(action)
+            if token?.isCancelled == true { throw MacroError.cancelled }
+            try executeAction(action, token: token)
         }
     }
 
-    private func executeAction(_ action: MacroAction) throws {
+    private func executeAction(_ action: MacroAction, token: MacroCancellationToken?) throws {
         switch action {
         case .keyPress(let keyString):
             guard let keyCode = VirtualKeyboard.keyCodeFromString(keyString) else {
@@ -155,20 +167,38 @@ public class MacroEngine {
             try keyboard.tapKey(keyCode)
 
         case .delay(let milliseconds):
-            usleep(UInt32(milliseconds * 1000))
+            try performDelay(milliseconds, token: token)
 
         case .text(let text):
-            try typeText(text)
+            try typeText(text, token: token)
         }
     }
 
-    private func typeText(_ text: String) throws {
+    private func typeText(_ text: String, token: MacroCancellationToken?) throws {
         for char in text.lowercased() {
+            if token?.isCancelled == true { throw MacroError.cancelled }
             if let keyCode = VirtualKeyboard.keyCodeFromString(String(char)) {
                 try keyboard.tapKey(keyCode)
-                // Small delay between characters
-                usleep(10000) // 10ms
+                // Small delay between characters with cancellation responsiveness
+                try performDelay(10, token: token)
+            } else {
+                // Skip unknown characters silently; could be extended for error reporting
+                continue
             }
+        }
+    }
+
+    /// Perform a delay in small slices to allow responsive cancellation.
+    private func performDelay(_ milliseconds: Int, token: MacroCancellationToken?) throws {
+        guard milliseconds > 0 else { return }
+        var remaining = milliseconds
+        // Slice size (ms). 10ms chosen as balance between responsiveness and overhead.
+        let slice = 10
+        while remaining > 0 {
+            if token?.isCancelled == true { throw MacroError.cancelled }
+            let sleepMs = min(slice, remaining)
+            usleep(UInt32(sleepMs * 1000))
+            remaining -= sleepMs
         }
     }
 
@@ -176,6 +206,7 @@ public class MacroEngine {
         case macroNotFound(String)
         case invalidKey(String)
         case executionFailed(String)
+        case cancelled
 
         public var errorDescription: String? {
             switch self {
@@ -185,8 +216,26 @@ public class MacroEngine {
                 return "Invalid key: \(key)"
             case .executionFailed(let message):
                 return "Macro execution failed: \(message)"
+            case .cancelled:
+                return "Macro execution cancelled"
             }
         }
+    }
+}
+
+/// Cancellation token for macro execution. Thread-safe flag checked between actions and delay slices.
+public final class MacroCancellationToken {
+    private let lock = DispatchQueue(label: "com.g13compat.macro.cancel", qos: .utility)
+    private var _cancelled = false
+
+    public init() {}
+
+    public func cancel() {
+        lock.sync { _cancelled = true }
+    }
+
+    public var isCancelled: Bool {
+        lock.sync { _cancelled }
     }
 }
 

@@ -20,15 +20,8 @@ public protocol RawReportParser {
 ///  Byte index 4 bits 0..5 => G17..G22 (bits 6 unused, 7 constant axis base)
 final class G13VendorReportParser: RawReportParser {
     private var lastReport: [UInt8]? = nil
-
-    private struct BitCoordinate: Hashable { let byte: Int; let bit: Int }
-    private let mapping: [BitCoordinate: Int] = {
-        var dict: [BitCoordinate: Int] = [:]
-        for bit in 0..<8 { dict[BitCoordinate(byte: 2, bit: bit)] = bit + 1 }      // G1..G8
-        for bit in 0..<8 { dict[BitCoordinate(byte: 3, bit: bit)] = bit + 9 }      // G9..G16
-        for bit in 0..<6 { dict[BitCoordinate(byte: 4, bit: bit)] = bit + 17 }     // G17..G22
-        return dict
-    }()
+    // Use shared mapping so tests can validate coverage.
+    private let mapping = G13BitToGKeyMapping
 
     func process(report: [UInt8]) -> [GKeyStateChange] {
         guard report.count >= 5 else { // Need at least up to byte index 4
