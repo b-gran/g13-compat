@@ -22,10 +22,11 @@ public enum LogLevel: Int, Comparable, CustomStringConvertible {
 public class Logger {
     public static let shared = Logger()
 
-    private let logFile: URL
-    private let fileHandle: FileHandle?
+    private var logFile: URL
+    private var fileHandle: FileHandle?
     private let minLevel: LogLevel
     private let appendMode: Bool
+    private let maxBytes: Int? // rotation threshold
 
     private init() {
         // Resolve min level from environment
@@ -42,6 +43,11 @@ public class Logger {
         }
 
         appendMode = ProcessInfo.processInfo.environment["G13_LOG_APPEND"].map { $0 == "1" || $0.lowercased() == "true" } ?? false
+        if let rawMax = ProcessInfo.processInfo.environment["G13_LOG_MAX_BYTES"], let v = Int(rawMax), v > 1024 { // require >1KB
+            maxBytes = v
+        } else {
+            maxBytes = nil
+        }
 
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         logFile = homeDir.appendingPathComponent("g13-debug.log")
@@ -54,8 +60,8 @@ public class Logger {
             try? Data().write(to: logFile, options: .atomic)
         }
 
-        fileHandle = try? FileHandle(forWritingTo: logFile)
-        fileHandle?.seekToEndOfFile()
+    fileHandle = try? FileHandle(forWritingTo: logFile)
+    fileHandle?.seekToEndOfFile()
 
         internalLog(.info, "=== G13 Debug Log Started (level=\(minLevel), append=\(appendMode)) ===")
         internalLog(.info, "Log file: \(logFile.path)")
@@ -73,7 +79,38 @@ public class Logger {
         // Console
         print(logMessage, terminator: "")
         // File
-        if let data = logMessage.data(using: .utf8) { fileHandle?.write(data) }
+        if let data = logMessage.data(using: .utf8) {
+            rotateIfNeeded(adding: data.count)
+            fileHandle?.write(data)
+        }
+    }
+
+    /// Check size and rotate if threshold exceeded.
+    private func rotateIfNeeded(adding pendingBytes: Int) {
+        guard let max = maxBytes else { return }
+        do {
+            let attrs = try FileManager.default.attributesOfItem(atPath: logFile.path)
+            let currentSize = (attrs[.size] as? NSNumber)?.intValue ?? 0
+            if currentSize + pendingBytes > max {
+                // Close current handle
+                try fileHandle?.close()
+                // Rotate: move existing file to .1 (single backup)
+                let rotated = logFile.appendingPathExtension("1")
+                // Remove previous rotated if exists
+                if FileManager.default.fileExists(atPath: rotated.path) {
+                    try? FileManager.default.removeItem(at: rotated)
+                }
+                try FileManager.default.moveItem(at: logFile, to: rotated)
+                // Create new empty file
+                FileManager.default.createFile(atPath: logFile.path, contents: nil)
+                fileHandle = try FileHandle(forWritingTo: logFile)
+                fileHandle?.seekToEndOfFile()
+                internalLog(.info, "🔄 Log rotated (size exceeded \(max) bytes). Previous saved as \(rotated.lastPathComponent)")
+            }
+        } catch {
+            // If rotation fails, log once and disable further rotation attempts by clearing maxBytes (could also keep trying)
+            print("[WARN] Logger rotation failed: \(error)")
+        }
     }
 
     deinit {
