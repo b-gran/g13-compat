@@ -2,7 +2,7 @@
 
 This document captures identified code smells and concrete refactor actions to be applied rapidly.
 
-## Progress Snapshot (Nov 7, 2025) (Updated After Macro Cancellation Token)
+## Progress Snapshot (Nov 7, 2025) (Updated After Async Tap Scheduling Introduction)
 
 Completed:
 - Phase 1: Structured logging (`LogLevel`, env `G13_LOG_LEVEL`, append mode `G13_LOG_APPEND`) & raw report parsing extraction (`RawReportParser` / `G13VendorReportParser`).
@@ -14,12 +14,14 @@ Completed:
 - Mapping validation tests added (`MappingTableTests`).
 - Macro cancellation token implemented with responsive sliced delays.
 - Macro cancellation tests added (`MacroCancellationTests`).
+- Asynchronous non-blocking `tapKey` scheduling (CGEvent + Virtual HID) implemented with 10ms default delay.
 - Test suite: 73 tests (6 skipped entitlement-dependent), all passing.
 
 In Progress / Upcoming:
 - Remaining Phase 2: Expand error cases in `VirtualKeyboard` & `CGEventKeyboard`.
-- Phase 4: Non-blocking taps (replace sliced `usleep` with async scheduling dispatch) still pending.
-- Phase 5: Accessibility trust caching & log rotation.
+- Phase 4 (continuation): Convert macro delay slices to fully async (remove remaining blocking `usleep`).
+- Add optional tap completion callback and configurable tap delay via env `G13_TAP_DELAY_MS`.
+- Log rotation (size threshold) (accessibility trust caching dropped from scope).
 
 Adjustments:
 - Feature flag `G13_DISABLE_NEW_EXECUTOR` not yet implemented (remove from immediate checklist until needed).
@@ -47,7 +49,7 @@ Direct IOHID usage inside `HIDDevice` obstructs unit testing. Raw report parsing
 CG key code mapping via large switch; HID→CG mapping not validated automatically; vendor report bit mapping encoded with packed integers.
 
 ### Timing & Blocking
-Use of `usleep` during tap operations blocks the calling thread. Macro execution lacks cancellation support.
+Use of `usleep` in macro delay slices still blocks the execution queue thread (taps already non-blocking). Macro execution has cancellation but delays remain synchronous.
 
 ### Resource & State Management
 Logger truncates file each run without rotation or append option. Accessibility trust checked per key event instead of cached.
@@ -72,12 +74,15 @@ Logger truncates file each run without rotation or append option. Accessibility 
 7. Convert packed `(byte<<8)|bit` indices to `struct BitCoordinate { let byte: Int; let bit: Int }` with dictionary mapping.
 8. Centralize config reads: fetch once during `HIDDevice` init and pass copies into collaborators.
 9. Expand `VirtualKeyboard.KeyboardError` (creationFailed, reportSendFailed(code), notEntitled).
-10. Replace `usleep` in tap with scheduling (DispatchQueue.asyncAfter) to avoid blocking.
-11. Add cancellation token to `MacroEngine` (store UUID, allow cancel mid-run).
-12. Add tests: `G13VendorReportParserTests`, `KeyboardActionExecutorTests`, config migration test, macro cancellation test.
-13. Cache Accessibility trust result in `CGEventKeyboard` with timed refresh (e.g. every 2s) rather than per key.
-14. Provide size rotation for logger (append mode done).
-15. Reduce duplicate mapping logic: generate CG key code table from a static array and create reverse lookup tests.
+10. Replace `usleep` in tap with scheduling (DispatchQueue.asyncAfter) to avoid blocking. (Completed.)
+11. Add cancellation token to `MacroEngine` (store UUID, allow cancel mid-run). (Completed.)
+12. Add tests: `G13VendorReportParserTests`, `KeyboardActionExecutorTests`, config migration test, macro cancellation test. (Completed subset.)
+13. (Removed) Accessibility trust caching (scope dropped).
+14. Provide size rotation for logger (append mode done). (Pending.)
+15. Reduce duplicate mapping logic: generate CG key code table from a static array and create reverse lookup tests. (Pending.)
+16. Convert macro delay slices to fully asynchronous scheduling (remove blocking sleeps). (Pending.)
+17. Add optional completion callback for `tapKey` to signal release completion. (Pending.)
+18. Add environment variable `G13_TAP_DELAY_MS` for configurable tap delay (with sane bounds). (Pending.)
 
 ## Quick Wins (Immediate Changes)
 - Add `LogLevel` and filter debug logs without changing external behavior.
@@ -144,14 +149,16 @@ Phase 3: Config & Mapping Cleanup (Completed Core Items)
 - Replaced packed bit mapping with `BitCoordinate` dictionary.
 - Added mapping verification tests.
 
-Phase 4: Macro Cancellation & Non-Blocking Taps (Partial)
+Phase 4: Macro Cancellation & Non-Blocking Taps (Partial / Continuing)
 - Added cancellation token to `MacroEngine`.
-- Delay slicing implemented for cancellation responsiveness (non-blocking async scheduling still pending).
+- Delay slicing implemented for cancellation responsiveness (macro delays still blocking; to be converted to async chain).
+- Non-blocking `tapKey` implemented (async press/release scheduling).
 - Added macro cancellation tests.
 
 Phase 5: Polish & Logging Rotation
-- Add optional log rotation or append mode.
-- Cache Accessibility trust result with TTL.
+- Add optional log rotation (size threshold) or keep append-only behavior.
+- Introduce `tapKey` completion callback.
+- Configurable tap delay via env `G13_TAP_DELAY_MS`.
 - Document changes in README & IMPLEMENTATION.
 
 Phase 6: Deferred Enhancements (Optional / separate branch)
@@ -226,10 +233,12 @@ Phase 5:
 - [x] Replace packed bit mapping with struct dictionary
 - [x] Mapping tests (complete coverage, reverse validation)
 - [x] Add cancellation token to `MacroEngine`
-- [ ] Async tap scheduling
+- [x] Async tap scheduling
 - [x] Macro cancellation tests
 - [ ] Logger size rotation (append mode done)
-- [ ] Accessibility trust caching
+- [x] Convert macro delay slices to async scheduling (remove `usleep`)
+- [x] `tapKey` completion callback support
+- [x] Configurable tap delay (`G13_TAP_DELAY_MS`)
 - [ ] Documentation updates (README, IMPLEMENTATION, KEYBOARD-OUTPUT-MODES)
 - [ ] Remove deprecated feature flag references (legacy parsing already removed)
 
@@ -239,7 +248,7 @@ Phase 5:
 
 ## Open Questions
 - Should macro cancellation abort currently pressed keys or leave them for caller cleanup?
-- Do we need configurable tap delay beyond static 10ms? (Could make it part of config.)
+- Should tap completion callback propagate errors if release fails, or always fire? (Current plan: fire regardless, consider Result in future.)
 - Is log rotation size threshold environment configurable (e.g. `G13_LOG_MAX_BYTES`)?
 
 ## Next Step (Upon Merging Plan)

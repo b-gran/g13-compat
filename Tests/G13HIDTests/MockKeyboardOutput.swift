@@ -14,8 +14,9 @@ final class MockKeyboardOutput: KeyboardOutput {
         pressed.removeAll { $0 == keyCode }
     }
 
-    func tapKey(_ keyCode: VirtualKeyboard.KeyCode, modifiers: [VirtualKeyboard.ModifierKey]) throws {
+    func tapKey(_ keyCode: VirtualKeyboard.KeyCode, modifiers: [VirtualKeyboard.ModifierKey], completion: (() -> Void)?) throws {
         tapHistory.append(keyCode)
+        completion?()
     }
 
     func releaseAllKeys() throws {

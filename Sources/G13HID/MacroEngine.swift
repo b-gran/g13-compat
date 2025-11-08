@@ -84,6 +84,7 @@ public class MacroEngine {
     private var macros: [String: Macro] = [:]
     private var executionQueue = DispatchQueue(label: "com.g13compat.macroengine", qos: .userInitiated)
     private var isExecuting = false // Reserved for future use (sequential execution semantics)
+    private var asyncCancellationDetected = false // Set if token cancelled during async scheduling
 
     public init(keyboard: KeyboardOutput) {
         self.keyboard = keyboard
@@ -126,12 +127,20 @@ public class MacroEngine {
 
         let runToken = token ?? MacroCancellationToken()
 
+        let asyncGroup = DispatchGroup()
         executionQueue.async { [weak self] in
             guard let self = self else { return }
-
+            self.asyncCancellationDetected = false
             do {
-                try self.runMacro(macro, token: runToken)
-                completion?(.success(()))
+                try self.runMacro(macro, token: runToken, group: asyncGroup)
+                // Notify when all async scheduled operations complete
+                asyncGroup.notify(queue: self.executionQueue) {
+                    if runToken.isCancelled || self.asyncCancellationDetected {
+                        completion?(.failure(MacroError.cancelled))
+                    } else {
+                        completion?(.success(()))
+                    }
+                }
             } catch {
                 completion?(.failure(error))
             }
@@ -139,67 +148,88 @@ public class MacroEngine {
         return runToken
     }
 
-    private func runMacro(_ macro: Macro, token: MacroCancellationToken?) throws {
+    private func runMacro(_ macro: Macro, token: MacroCancellationToken?, group: DispatchGroup) throws {
+        // Sequentially execute actions; delays and text typing are now asynchronous and scheduled.
         for action in macro.actions {
             if token?.isCancelled == true { throw MacroError.cancelled }
-            try executeAction(action, token: token)
+            try executeActionSyncOrSchedule(action, token: token, group: group)
         }
+        // NOTE: Asynchronous tap releases may still be in flight; macro considered complete once all presses/releases/text scheduling done.
     }
 
-    private func executeAction(_ action: MacroAction, token: MacroCancellationToken?) throws {
+    /// Execute an action. Key events remain synchronous; delays and text typing schedule asynchronous chains but do not block.
+    private func executeActionSyncOrSchedule(_ action: MacroAction, token: MacroCancellationToken?, group: DispatchGroup) throws {
         switch action {
         case .keyPress(let keyString):
-            guard let keyCode = VirtualKeyboard.keyCodeFromString(keyString) else {
-                throw MacroError.invalidKey(keyString)
-            }
+            guard let keyCode = VirtualKeyboard.keyCodeFromString(keyString) else { throw MacroError.invalidKey(keyString) }
             try keyboard.pressKey(keyCode)
-
         case .keyRelease(let keyString):
-            guard let keyCode = VirtualKeyboard.keyCodeFromString(keyString) else {
-                throw MacroError.invalidKey(keyString)
-            }
+            guard let keyCode = VirtualKeyboard.keyCodeFromString(keyString) else { throw MacroError.invalidKey(keyString) }
             try keyboard.releaseKey(keyCode)
-
         case .keyTap(let keyString):
-            guard let keyCode = VirtualKeyboard.keyCodeFromString(keyString) else {
-                throw MacroError.invalidKey(keyString)
-            }
-            try keyboard.tapKey(keyCode)
-
+            guard let keyCode = VirtualKeyboard.keyCodeFromString(keyString) else { throw MacroError.invalidKey(keyString) }
+            try keyboard.tapKey(keyCode) // async release handled by keyboard implementation
         case .delay(let milliseconds):
-            try performDelay(milliseconds, token: token)
-
+            scheduleDelay(milliseconds, token: token, group: group)
         case .text(let text):
-            try typeText(text, token: token)
+            scheduleTypeText(text, token: token, group: group)
         }
     }
 
-    private func typeText(_ text: String, token: MacroCancellationToken?) throws {
-        for char in text.lowercased() {
-            if token?.isCancelled == true { throw MacroError.cancelled }
-            if let keyCode = VirtualKeyboard.keyCodeFromString(String(char)) {
-                try keyboard.tapKey(keyCode)
-                // Small delay between characters with cancellation responsiveness
-                try performDelay(10, token: token)
-            } else {
-                // Skip unknown characters silently; could be extended for error reporting
-                continue
+    /// Asynchronously schedule a delay honoring cancellation without blocking.
+    private func scheduleDelay(_ milliseconds: Int, token: MacroCancellationToken?, group: DispatchGroup) {
+        guard milliseconds > 0 else { return }
+        group.enter()
+        let slice = 10
+        var remaining = milliseconds
+        var didLeave = false // ensure we call leave exactly once
+        func scheduleNext() {
+            if token?.isCancelled == true {
+                asyncCancellationDetected = true
+                if !didLeave { didLeave = true; group.leave() }
+                return // stop chain early
+            }
+            if remaining <= 0 { return }
+            let current = min(slice, remaining)
+            remaining -= current
+            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + .milliseconds(current)) {
+                scheduleNext()
+                if remaining <= 0 {
+                    if !didLeave { didLeave = true; group.leave() }
+                }
             }
         }
+        scheduleNext()
     }
 
-    /// Perform a delay in small slices to allow responsive cancellation.
-    private func performDelay(_ milliseconds: Int, token: MacroCancellationToken?) throws {
-        guard milliseconds > 0 else { return }
-        var remaining = milliseconds
-        // Slice size (ms). 10ms chosen as balance between responsiveness and overhead.
-        let slice = 10
-        while remaining > 0 {
-            if token?.isCancelled == true { throw MacroError.cancelled }
-            let sleepMs = min(slice, remaining)
-            usleep(UInt32(sleepMs * 1000))
-            remaining -= sleepMs
+    /// Asynchronously schedule typing of text characters with per-character small delay (10ms) for realism and cancellation checks.
+    private func scheduleTypeText(_ text: String, token: MacroCancellationToken?, group: DispatchGroup) {
+        let characters = Array(text.lowercased())
+        guard !characters.isEmpty else { return }
+        group.enter()
+        var index = 0
+        var didLeave = false // ensure only one leave
+        func scheduleNextChar() {
+            if token?.isCancelled == true {
+                asyncCancellationDetected = true
+                if !didLeave { didLeave = true; group.leave() }
+                return
+            }
+            guard index < characters.count else { return }
+            let char = characters[index]
+            index += 1
+            if let keyCode = VirtualKeyboard.keyCodeFromString(String(char)) {
+                try? keyboard.tapKey(keyCode)
+            }
+            // schedule next character after small delay (10ms)
+            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + .milliseconds(10)) {
+                scheduleNextChar()
+                if index >= characters.count {
+                    if !didLeave { didLeave = true; group.leave() }
+                }
+            }
         }
+        scheduleNextChar()
     }
 
     public enum MacroError: Error, LocalizedError {

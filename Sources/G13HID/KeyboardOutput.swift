@@ -9,7 +9,11 @@ public protocol KeyboardOutput {
     func releaseKey(_ keyCode: VirtualKeyboard.KeyCode, modifiers: [VirtualKeyboard.ModifierKey]) throws
 
     /// Tap a key (press and release)
-    func tapKey(_ keyCode: VirtualKeyboard.KeyCode, modifiers: [VirtualKeyboard.ModifierKey]) throws
+    /// - Parameters:
+    ///   - keyCode: Key to tap
+    ///   - modifiers: Modifiers applied during press/release
+    ///   - completion: Optional callback invoked after release attempt completes (success or failure)
+    func tapKey(_ keyCode: VirtualKeyboard.KeyCode, modifiers: [VirtualKeyboard.ModifierKey], completion: (() -> Void)?) throws
 
     /// Release all currently pressed keys
     func releaseAllKeys() throws
@@ -25,8 +29,8 @@ extension KeyboardOutput {
         try releaseKey(keyCode, modifiers: [])
     }
 
-    public func tapKey(_ keyCode: VirtualKeyboard.KeyCode) throws {
-        try tapKey(keyCode, modifiers: [])
+    public func tapKey(_ keyCode: VirtualKeyboard.KeyCode, completion: (() -> Void)? = nil) throws {
+        try tapKey(keyCode, modifiers: [], completion: completion)
     }
 }
 

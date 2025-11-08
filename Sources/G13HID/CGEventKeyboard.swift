@@ -15,6 +15,31 @@ public class CGEventKeyboard: KeyboardOutput {
         diagnoseAccessibility()
     }
 
+    public func tapKey(_ keyCode: VirtualKeyboard.KeyCode, modifiers: [VirtualKeyboard.ModifierKey], completion: (() -> Void)?) throws {
+        log("🟢 CGEventKeyboard.tapKey called: \(keyCode)")
+        try pressKey(keyCode, modifiers: modifiers)
+        let start = Date()
+        let delayMs = CGEventKeyboard.tapDelayMilliseconds
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + .milliseconds(delayMs)) { [weak self] in
+            guard let self = self else { completion?(); return }
+            do {
+                try self.releaseKey(keyCode, modifiers: modifiers)
+                let elapsed = Int(Date().timeIntervalSince(start) * 1000)
+                log("⏱ CGEventKeyboard async tap release (\(elapsed)ms, cfg=\(delayMs)) for key: \(keyCode)")
+            } catch {
+                log("❌ CGEventKeyboard async tap release failed for key: \(keyCode) error=\(error)")
+            }
+            completion?()
+        }
+    }
+
+    // Read configurable tap delay (default 10ms) from environment once.
+    private static let tapDelayMilliseconds: Int = {
+        let env = ProcessInfo.processInfo.environment["G13_TAP_DELAY_MS"]
+        if let raw = env, let val = Int(raw), val >= 5, val <= 250 { return val }
+        return 10
+    }()
+    
     public func pressKey(_ keyCode: VirtualKeyboard.KeyCode, modifiers: [VirtualKeyboard.ModifierKey]) throws {
         log("🔵 CGEventKeyboard.pressKey called: \(keyCode)")
 
@@ -81,21 +106,6 @@ public class CGEventKeyboard: KeyboardOutput {
         log("✅ Posted key up event for CGKeyCode: 0x\(String(format: "%02X", cgKeyCode))")
     }
 
-    public func tapKey(_ keyCode: VirtualKeyboard.KeyCode, modifiers: [VirtualKeyboard.ModifierKey]) throws {
-        log("🟢 CGEventKeyboard.tapKey called: \(keyCode)")
-        try pressKey(keyCode, modifiers: modifiers)
-        let start = Date()
-        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + .milliseconds(10)) { [weak self] in
-            guard let self = self else { return }
-            do {
-                try self.releaseKey(keyCode, modifiers: modifiers)
-                let elapsed = Int(Date().timeIntervalSince(start) * 1000)
-                log("⏱ CGEventKeyboard async tap release (\(elapsed)ms) for key: \(keyCode)")
-            } catch {
-                log("❌ CGEventKeyboard async tap release failed for key: \(keyCode) error=\(error)")
-            }
-        }
-    }
 
     public func releaseAllKeys() throws {
         // Release all currently pressed keys
