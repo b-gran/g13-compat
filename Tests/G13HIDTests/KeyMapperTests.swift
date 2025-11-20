@@ -196,6 +196,33 @@ final class KeyMapperTests: XCTestCase {
         XCTAssertNoThrow(mapper.processInput(data))
     }
 
+    func testGKeyWithKeyHold() throws {
+        guard let mapper = keyMapper, let kb = keyboard as? MockKeyboardOutput else {
+            throw XCTSkip("Components not available")
+        }
+
+        // Configure G1 to hold 'z'
+        var newConfig = G13Config()
+        newConfig.gKeys = [ GKeyConfig(keyNumber: 1, action: .keyHold("z")) ]
+        mapper.updateConfig(newConfig)
+
+        // Press G1
+        let pressData = HIDInputData(timestamp: 0, length: 1, usagePage: 0x09, usage: 0x01, intValue: 1, rawData: [1])
+        mapper.processInput(pressData)
+
+        XCTAssertEqual(kb.pressEvents, 1, "Expected one keyDown event")
+        XCTAssertEqual(kb.releaseEvents, 0, "Expected no keyUp before physical release")
+        XCTAssertTrue(kb.pressed.count == 1, "Key should be in pressed set")
+
+        // Release G1
+        let releaseData = HIDInputData(timestamp: 1, length: 1, usagePage: 0x09, usage: 0x01, intValue: 0, rawData: [0])
+        mapper.processInput(releaseData)
+
+        XCTAssertEqual(kb.pressEvents, 1, "Still only one keyDown event")
+        XCTAssertEqual(kb.releaseEvents, 1, "Expected one keyUp after physical release")
+        XCTAssertTrue(kb.pressed.isEmpty, "No keys should remain pressed")
+    }
+
     func testGKeyDisabled() throws {
         guard let mapper = keyMapper else {
             throw XCTSkip("KeyMapper not available")

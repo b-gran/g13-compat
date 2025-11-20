@@ -15,6 +15,7 @@ public struct GKeyConfig: Codable {
 public enum GKeyAction: Codable {
     case macro(String)  // Reference to a macro name
     case keyTap(String)  // Single key tap
+    case keyHold(String) // Press on down, release on up (normal key behavior)
     case disabled
     case modifier(ModifierKind) // Acts as held modifier while pressed
 
@@ -36,6 +37,9 @@ public enum GKeyAction: Codable {
         case "keyTap":
             let key = try container.decode(String.self, forKey: .key)
             self = .keyTap(key)
+        case "keyHold":
+            let key = try container.decode(String.self, forKey: .key)
+            self = .keyHold(key)
         case "disabled":
             self = .disabled
         case "modifier":
@@ -59,6 +63,9 @@ public enum GKeyAction: Codable {
             try container.encode(name, forKey: .macroName)
         case .keyTap(let key):
             try container.encode("keyTap", forKey: .type)
+            try container.encode(key, forKey: .key)
+        case .keyHold(let key):
+            try container.encode("keyHold", forKey: .type)
             try container.encode(key, forKey: .key)
         case .disabled:
             try container.encode("disabled", forKey: .type)
@@ -330,19 +337,7 @@ public class ConfigManager {
 
         // Try to load existing config, or save default
         if fileManager.fileExists(atPath: self.configPath.path) {
-            // Attempt to load as array first, then fallback to single object
-            do {
-                try loadProfiles()
-            } catch {
-                // Fallback: try legacy single-config decoding
-                do {
-                    let legacy = try loadSingleConfig()
-                    self.profiles = [legacy]
-                    try saveProfiles() // migrate immediately to array format
-                } catch {
-                    throw error
-                }
-            }
+            try loadProfiles()
         } else {
             try saveProfiles()
         }

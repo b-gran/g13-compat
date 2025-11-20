@@ -64,6 +64,16 @@ public class KeyMapper {
                     executor.modifierUp(kind)
                     log("🔓 Modifier UP (\(kind.displayName)) via G\(gKeyNumber)")
                 }
+                // If keyHold mapping, emit keyUp for underlying key
+                if case .keyHold(let keyString) = keyConfig.action {
+                    log("⬆️  Emitting keyUp for held key via G\(gKeyNumber): \(keyString)")
+                    _ = executor.perform(.keyUp(keyString)) { result in
+                        switch result {
+                        case .success: log("✅ keyUp executed for G\(gKeyNumber)")
+                        case .failure(let error): log("❌ keyUp failed for G\(gKeyNumber): \(error)")
+                        }
+                    }
+                }
             }
         }
     }
@@ -79,6 +89,7 @@ public class KeyMapper {
         switch keyConfig.action {
         case .macro(let macroName): action = .macro(macroName)
         case .keyTap(let keyString): action = .keyTap(keyString)
+        case .keyHold(let keyString): action = .keyDown(keyString) // defer keyUp to release handler
         case .disabled: action = nil
         case .modifier(let kind):
             if !pressedModifiers.contains(kind) {

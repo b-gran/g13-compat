@@ -76,6 +76,7 @@ struct KeyMapEditorView: View {
     private func actionLabel(for action: GKeyAction) -> String {
         switch action {
         case .keyTap(let s): return s
+        case .keyHold(let s): return "hold: \(s)"
         case .macro(let name): return "macro: \(name)"
         case .disabled: return "(disabled)"
         case .modifier(let kind): return "mod: \(kind.displayName)"
