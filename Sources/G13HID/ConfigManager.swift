@@ -284,7 +284,7 @@ public struct G13Config: Codable {
         ]
 
         for (number, key) in defaultMappings {
-            gKeys.append(GKeyConfig(keyNumber: number, action: .keyTap(key)))
+            gKeys.append(GKeyConfig(keyNumber: number, action: .keyHold(key)))
         }
 
         return G13Config(

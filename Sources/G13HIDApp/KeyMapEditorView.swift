@@ -8,6 +8,7 @@ struct KeyMapEditorView: View {
     @State private var selectedGKey: Int? = nil
     @State private var captureMode = false
     @State private var capturedKey = ""
+    @State private var keyMappingType: KeyMappingType = .hold
     @State private var showMacroList = false
     @State private var showModifierList = false
     @State private var eventMonitor: Any? = nil
@@ -19,6 +20,11 @@ struct KeyMapEditorView: View {
         [nil,15,16,17,18,19,nil],
         [nil,nil,20,21,22,nil,nil]
     ]
+
+    private enum KeyMappingType: String, CaseIterable {
+        case tap = "Tap"
+        case hold = "Hold"
+    }
 
     var body: some View {
         ZStack {
@@ -53,6 +59,7 @@ struct KeyMapEditorView: View {
         showMacroList = false
         showModifierList = false
         capturedKey = ""
+        keyMappingType = .hold
     }
 
     private var keyGrid: some View {
@@ -150,10 +157,20 @@ struct KeyMapEditorView: View {
     private func captureSection(gKey: Int) -> some View {
         VStack(spacing: 8) {
             Text("Press a key on your physical keyboard…").foregroundColor(.secondary)
+            Picker("Mapping Type", selection: $keyMappingType) {
+                ForEach(KeyMappingType.allCases, id: \.self) { type in
+                    Text(type.rawValue).tag(type)
+                }
+            }
+            .pickerStyle(.segmented)
             Text(capturedKey.isEmpty ? "(waiting)" : capturedKey).font(.title3)
             HStack {
                 Button("Use \(capturedKey.isEmpty ? "(none)" : capturedKey)") {
-                    if !capturedKey.isEmpty { monitor.updateMapping(for: gKey, action: .keyTap(capturedKey.lowercased())) }
+                    if !capturedKey.isEmpty {
+                        let mappedKey = capturedKey.lowercased()
+                        let action: GKeyAction = keyMappingType == .hold ? .keyHold(mappedKey) : .keyTap(mappedKey)
+                        monitor.updateMapping(for: gKey, action: action)
+                    }
                     captureMode = false; capturedKey = ""; selectedGKey = nil
                 }.disabled(capturedKey.isEmpty)
                 Button("Cancel") { captureMode = false }
@@ -203,11 +220,16 @@ struct KeyMapEditorView: View {
 
     private func chooserSection(gKey: Int, config: G13Config) -> some View {
         VStack(spacing: 10) {
-            if let current = config.gKeys.first(where: { $0.keyNumber == gKey })?.action {
+            let currentAction = config.gKeys.first(where: { $0.keyNumber == gKey })?.action
+            if let current = currentAction {
                 Text("Current: \(actionLabel(for: current))").font(.caption).foregroundColor(.secondary)
             }
             HStack(spacing: 12) {
-                Button("Map Key") { captureMode = true; capturedKey = "" }
+                Button("Map Key") {
+                    keyMappingType = mappingType(from: currentAction)
+                    captureMode = true
+                    capturedKey = ""
+                }
                 Button("Map Macro") { showMacroList = true }
                 Button("Map Modifier") { showModifierList = true }
                 Button("Disable") {
@@ -236,6 +258,14 @@ struct KeyMapEditorView: View {
             return specialKeyName(from: event.keyCode) ?? chars.lowercased()
         }
         return specialKeyName(from: event.keyCode) ?? "unknown"
+    }
+
+    private func mappingType(from action: GKeyAction?) -> KeyMappingType {
+        switch action {
+        case .keyTap: return .tap
+        case .keyHold: return .hold
+        default: return .hold
+        }
     }
 
     private func specialKeyName(from keyCode: UInt16) -> String? {
